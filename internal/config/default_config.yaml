@@ -1,0 +1,6 @@
+roots: []
+defaults:
+  rootConfig:
+    scheduleInterval: 5m
+  alerts:
+    - name: stale
