@@ -1,9 +1,19 @@
 # git-janitor
+
 A janitor for my git repos
 
-## Sample TUI App
+## Features
 
-This project includes a sample Terminal User Interface (TUI) application built with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
+* git clone monitoring 
+
+The janitor explores your local git clones and monitor their staleness, status, etc
+
+* git remotes monitoring
+
+* branches monitoring
+
+* stashes monitoring
+
 
 ### Features
 
@@ -16,10 +26,10 @@ This project includes a sample Terminal User Interface (TUI) application built w
 
 ```bash
 # Build the application
-go build -o git-janitor .
+go install github.com/fredbi/git-janitor/...@latest
 
 # Run the application
-./git-janitor
+git-janitor
 ```
 
 ### Controls

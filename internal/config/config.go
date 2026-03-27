@@ -1,0 +1,324 @@
+package config
+
+import (
+	"embed"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/go-viper/mapstructure/v2"
+	"go.yaml.in/yaml/v3"
+)
+
+//go:embed default_config.yaml
+var efs embed.FS
+
+const (
+	// configDir is the directory name under os.UserConfigDir.
+	configDir = "git-janitor"
+
+	// configFile is the configuration file name.
+	configFile = "config.yaml"
+)
+
+// Config describes the git-janitor configuration for this local host.
+type Config struct {
+	Roots    []LocalRoot
+	Defaults struct {
+		RootConfig *RootConfig
+		Alerts     []AlertRule
+	}
+}
+
+// LocalRoot groups repositories found under a single filesystem root.
+type LocalRoot struct {
+	Name string
+	// Path is the absolute path of the root on this host.
+	Path       string
+	RootConfig RootConfig
+
+	// Repos is populated at runtime by scanning; it is not persisted.
+	Repos []Repository `mapstructure:"-"`
+}
+
+// RootConfig holds the configuration for all repositories under a root.
+type RootConfig struct {
+	// ScheduleInterval is how often the janitor should check this root
+	// for stale branches, etc.
+	ScheduleInterval time.Duration
+}
+
+// Repository describes a single git repository discovered on disk.
+type Repository struct {
+	Path          string
+	Kind          RepoKind
+	Access        AccessKind
+	LastScanned   time.Time
+	Remotes       map[string]string
+	SCM           SCMKind
+	DefaultBranch string
+}
+
+// RepoKind classifies a repository.
+type RepoKind string
+
+const (
+	RepoKindNone  RepoKind = "not-git"
+	RepoKindClone RepoKind = "clone"
+	RepoKindFork  RepoKind = "fork"
+)
+
+// AccessKind classifies the access level of a repository.
+type AccessKind string
+
+const (
+	AccessKindNone    AccessKind = "none"
+	AccessKindPublic  AccessKind = "public"
+	AccessKindPrivate AccessKind = "private"
+)
+
+// SCMKind identifies the source-code management platform hosting the remote.
+type SCMKind string
+
+const (
+	SCMKindNone   SCMKind = "no-scm"
+	SCMKindGithub SCMKind = "github"
+	SCMKindGitlab SCMKind = "gitlab"
+)
+
+// AlertRule defines a rule that triggers an alert for a repository.
+type AlertRule struct {
+	Name string
+}
+
+// DefaultConfigPath returns the full path to the configuration file
+// under the user's config directory (e.g. $HOME/.config/git-janitor/config.yaml).
+func DefaultConfigPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("determining user config directory: %w", err)
+	}
+
+	return filepath.Join(dir, configDir, configFile), nil
+}
+
+// Load reads and parses the configuration from the given YAML file path.
+//
+// Defaults from the embedded default_config.yaml are loaded first,
+// then the user file is overlaid on top.
+func Load(file string) (*Config, error) {
+	cfg, err := loadDefaults()
+	if err != nil {
+		return nil, fmt.Errorf("loading default config: %w", err)
+	}
+
+	fsys := os.DirFS(filepath.Dir(file))
+	pth := filepath.Join(".", filepath.Base(file))
+
+	return load(fsys, pth, cfg)
+}
+
+// LoadDefault attempts to load the configuration from the default path.
+//
+// If the file does not exist it returns the embedded defaults and no error.
+// Any other I/O or parse error is reported.
+func LoadDefault() (*Config, error) {
+	cfg, err := loadDefaults()
+	if err != nil {
+		return nil, fmt.Errorf("loading default config: %w", err)
+	}
+
+	path, err := DefaultConfigPath()
+	if err != nil {
+		// Cannot determine path — return defaults silently.
+		return cfg, nil
+	}
+
+	fsys := os.DirFS(filepath.Dir(path))
+	pth := filepath.Join(".", filepath.Base(path))
+
+	result, err := load(fsys, pth, cfg)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return cfg, nil
+		}
+
+		return nil, fmt.Errorf("loading config from %s: %w", path, err)
+	}
+
+	return result, nil
+}
+
+// LoadDefaults loads the embedded default_config.yaml into a fresh Config.
+func LoadDefaults() (*Config, error) {
+	return loadDefaults()
+}
+
+func loadDefaults() (*Config, error) {
+	return load(efs, "default_config.yaml", &Config{})
+}
+
+// load reads a YAML file from fsys, unmarshals it, and decodes into cfg
+// using mapstructure with duration/time hooks.
+func load(fsys fs.FS, file string, cfg *Config) (*Config, error) {
+	content, err := fs.ReadFile(fsys, file)
+	if err != nil {
+		return nil, err
+	}
+
+	var raw any
+	if err := yaml.Unmarshal(content, &raw); err != nil {
+		return nil, fmt.Errorf("parsing YAML: %w", err)
+	}
+
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToTimeHookFunc(time.RFC3339),
+		),
+		Result: cfg,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating decoder: %w", err)
+	}
+
+	if err := dec.Decode(raw); err != nil {
+		return nil, fmt.Errorf("decoding config: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// IsEmpty reports whether the configuration has no roots defined.
+func (c *Config) IsEmpty() bool {
+	return len(c.Roots) == 0
+}
+
+// AddRoot appends a new root directory to the configuration.
+//
+// If name is empty it defaults to the base name of path (e.g.
+// "/home/dev/projects" → "projects").
+func (c *Config) AddRoot(name, path string, interval time.Duration) {
+	if name == "" {
+		name = filepath.Base(path)
+	}
+
+	c.Roots = append(c.Roots, LocalRoot{
+		Name: name,
+		Path: path,
+		RootConfig: RootConfig{
+			ScheduleInterval: interval,
+		},
+	})
+}
+
+// UpdateRootName changes the display name of the root at the given index.
+//
+// It returns false if the index is out of range.
+func (c *Config) UpdateRootName(index int, name string) bool {
+	if index < 0 || index >= len(c.Roots) {
+		return false
+	}
+
+	c.Roots[index].Name = name
+
+	return true
+}
+
+// RootDisplayName returns the display name for the root at the given index.
+//
+// If the name is empty, it falls back to the base name of the root's path.
+func (c *Config) RootDisplayName(index int) string {
+	if index < 0 || index >= len(c.Roots) {
+		return ""
+	}
+
+	r := c.Roots[index]
+	if r.Name != "" {
+		return r.Name
+	}
+
+	return filepath.Base(r.Path)
+}
+
+// UpdateRootInterval changes the schedule interval of the root at the given index.
+//
+// It returns false if the index is out of range.
+func (c *Config) UpdateRootInterval(index int, interval time.Duration) bool {
+	if index < 0 || index >= len(c.Roots) {
+		return false
+	}
+
+	c.Roots[index].RootConfig.ScheduleInterval = interval
+
+	return true
+}
+
+// EncodeYAML serializes the configuration as YAML into the provided writer.
+//
+// Runtime-only fields (Repos) are excluded from the output via mapstructure:"-" tags.
+func (c *Config) EncodeYAML(w io.Writer) error {
+	var raw map[string]any
+
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Squash: true,
+		Deep:   true,
+		Result: &raw,
+	})
+	if err != nil {
+		return fmt.Errorf("creating mapstructure decoder: %w", err)
+	}
+
+	if err := dec.Decode(c); err != nil {
+		return fmt.Errorf("encoding config to map: %w", err)
+	}
+
+	return yaml.NewEncoder(w).Encode(raw)
+}
+
+// Save writes the configuration as YAML to the default config path.
+//
+// It creates the parent directory if it does not exist.
+func (c *Config) Save() error {
+	path, err := DefaultConfigPath()
+	if err != nil {
+		return fmt.Errorf("determining config path: %w", err)
+	}
+
+	return c.SaveTo(path)
+}
+
+// SaveTo writes the configuration as YAML to the given file path.
+//
+// It creates the parent directory if it does not exist.
+func (c *Config) SaveTo(path string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("creating config directory %s: %w", dir, err)
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("creating config file %s: %w", path, err)
+	}
+
+	encErr := c.EncodeYAML(f)
+
+	if closeErr := f.Close(); closeErr != nil {
+		if encErr != nil {
+			return fmt.Errorf("writing config to %s: %w (also: close: %v)", path, encErr, closeErr)
+		}
+
+		return fmt.Errorf("closing config file %s: %w", path, closeErr)
+	}
+
+	if encErr != nil {
+		return fmt.Errorf("writing config to %s: %w", path, encErr)
+	}
+
+	return nil
+}
