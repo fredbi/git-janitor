@@ -1,28 +1,49 @@
 # git-janitor
 
-A janitor for my git repos
+A janitor for my git repos.
 
 ## Features
 
-* git clone monitoring 
+### Monitoring local clones
 
 The janitor explores your local git clones and monitor their staleness, status, etc
 
-* git remotes monitoring
+* keep fresh
+* git remotes monitor
+* monitor stale branches
+* monitor stashes
+* rebase branches
+* push local-only branches
+* monitor size
+* alert on branches that can't be
+  rebases / merged
+* monitor worktrees
+* monitor activity
 
-* branches monitoring
+### Monitoring forks
 
-* stashes monitoring
+* keep fork for up-to-date (merge)
+
+### github monitoring
+
+* issues
+* PRs
+* security alerts
+* deviations from confif template
+* ...
+
+### Schedule actions
 
 
-### Features
+
+### UX
 
 - Interactive menu with arrow key navigation
 - Selection with space bar
 - Action execution with enter key
-- Clean and simple interface demonstrating Bubble Tea fundamentals
+- "/" commands
 
-### Running the App
+## Running the App
 
 ```bash
 # Build the application
@@ -34,8 +55,13 @@ git-janitor
 
 ### Controls
 
+- tab/Shift-tab: cycle panel
+- left/right Control-A: cycle tab
 - `↑`/`k` - Move cursor up
 - `↓`/`j` - Move cursor down
 - `space` - Toggle selection
 - `enter` - Perform action
 - `q` - Quit application
+
+## Configuration
+
