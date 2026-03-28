@@ -15,7 +15,7 @@ type Remote struct {
 
 // Remotes runs git remote -v and returns the parsed remotes.
 func (r *Runner) Remotes(ctx context.Context) ([]Remote, error) {
-	out, err := r.run(ctx, "remote", "-v")
+	out, err := r.run(ctx, cmdRemoteVerbose()...)
 	if err != nil {
 		return nil, err
 	}

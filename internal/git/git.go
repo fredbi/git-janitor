@@ -56,3 +56,33 @@ func (r *Runner) run(ctx context.Context, args ...string) (string, error) {
 
 	return stdout.String(), nil
 }
+
+// runWithStdin executes a git command with the given string as stdin.
+func (r *Runner) runWithStdin(ctx context.Context, stdin string, args ...string) (string, error) {
+	timeout := r.Timeout
+	if timeout == 0 {
+		timeout = defaultTimeout
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = r.Dir
+	cmd.Stdin = strings.NewReader(stdin)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, detail)
+		}
+
+		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+
+	return stdout.String(), nil
+}

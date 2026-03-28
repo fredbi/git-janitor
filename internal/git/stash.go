@@ -20,7 +20,7 @@ type Stash struct {
 
 // Stashes runs git stash list and returns all stash entries.
 func (r *Runner) Stashes(ctx context.Context) ([]Stash, error) {
-	out, err := r.run(ctx, "stash", "list")
+	out, err := r.run(ctx, cmdStashList()...)
 	if err != nil {
 		return nil, err
 	}

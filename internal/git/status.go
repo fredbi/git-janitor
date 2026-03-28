@@ -55,7 +55,7 @@ func (s Status) IsDirty() bool {
 
 // Status runs git status --porcelain=v2 --branch and parses the output.
 func (r *Runner) Status(ctx context.Context) (Status, error) {
-	out, err := r.run(ctx, "status", "--porcelain=v2", "--branch")
+	out, err := r.run(ctx, cmdStatus()...)
 	if err != nil {
 		return Status{}, err
 	}

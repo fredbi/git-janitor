@@ -61,6 +61,8 @@ type Repository struct {
 	Remotes       map[string]string
 	SCM           SCMKind
 	DefaultBranch string
+	LastCommit    time.Time
+	Activity      float64
 }
 
 // RepoKind classifies a repository.
@@ -70,6 +72,7 @@ const (
 	RepoKindNone  RepoKind = "not-git"
 	RepoKindClone RepoKind = "clone"
 	RepoKindFork  RepoKind = "fork"
+	RepoKindOther RepoKind = "other"
 )
 
 // AccessKind classifies the access level of a repository.
@@ -88,12 +91,22 @@ const (
 	SCMKindNone   SCMKind = "no-scm"
 	SCMKindGithub SCMKind = "github"
 	SCMKindGitlab SCMKind = "gitlab"
+	SCMKindOther  SCMKind = "other"
 )
 
 // AlertRule defines a rule that triggers an alert for a repository.
 type AlertRule struct {
 	Name string
+	Kind AlertKind
 }
+
+type AlertKind string
+
+const (
+	AlertKindGit   = "git"
+	AlertKindSCM   = "scm"
+	AlertKindLocal = "local"
+)
 
 // DefaultConfigPath returns the full path to the configuration file
 // under the user's config directory (e.g. $HOME/.config/git-janitor/config.yaml).
@@ -243,6 +256,32 @@ func (c *Config) RootDisplayName(index int) string {
 	}
 
 	return filepath.Base(r.Path)
+}
+
+// UpdateRootPath changes the path of the root at the given index.
+//
+// It returns false if the index is out of range.
+func (c *Config) UpdateRootPath(index int, path string) bool {
+	if index < 0 || index >= len(c.Roots) {
+		return false
+	}
+
+	c.Roots[index].Path = path
+
+	return true
+}
+
+// DeleteRoot removes the root at the given index.
+//
+// It returns false if the index is out of range.
+func (c *Config) DeleteRoot(index int) bool {
+	if index < 0 || index >= len(c.Roots) {
+		return false
+	}
+
+	c.Roots = append(c.Roots[:index], c.Roots[index+1:]...)
+
+	return true
 }
 
 // UpdateRootInterval changes the schedule interval of the root at the given index.
