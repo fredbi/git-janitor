@@ -29,3 +29,6 @@ type RepoInfo struct {
 	Activity      *Activity
 	Err           error
 }
+
+// IsRepoInfo is a marker method satisfying the engine.RepoInfo interface.
+func (*RepoInfo) IsRepoInfo() {}

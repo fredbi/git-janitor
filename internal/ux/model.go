@@ -8,6 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/config"
+	"github.com/fredbi/git-janitor/internal/engine"
+	"github.com/fredbi/git-janitor/internal/engine/setup"
 	"github.com/fredbi/git-janitor/internal/git"
 	"github.com/fredbi/git-janitor/internal/ux/commands"
 	wizard "github.com/fredbi/git-janitor/internal/ux/commands/config-wizard"
@@ -35,7 +37,8 @@ const paneCount = 3
 
 // Model represents the top-level state of the TUI.
 type Model struct {
-	Cfg *config.Config
+	Cfg    *config.Config
+	Engine *engine.Engine
 
 	Repos  repos.Panel
 	Right  infos.Panel
@@ -44,12 +47,17 @@ type Model struct {
 	Help   help.Popup
 	Wizard wizard.ConfigWizard
 
-	Theme        *uxtypes.Theme
-	Focused      Pane
-	Width        int
-	Height       int
-	Quitting     bool
-	SelectedRepo string // path of the currently selected repo (to detect changes)
+	Theme         *uxtypes.Theme
+	Focused       Pane
+	Width         int
+	Height        int
+	Quitting      bool
+	SelectedRepo  string // path of the currently selected repo (to detect changes)
+	SelectedRoot  int    // index of the root containing the selected repo
+
+	// PendingAction holds an action awaiting user confirmation (Y/N).
+	// nil when no confirmation is pending.
+	PendingAction *uxtypes.ExecuteActionMsg
 }
 
 // New creates the initial state for the TUI app.
@@ -63,11 +71,16 @@ func New(cfg *config.Config) *Model {
 	t := themecmd.Default
 	uxtypes.CurrentTheme = &t
 
+	eng := setup.NewEngine()
+	rightPanel := infos.New()
+	rightPanel.Engine = eng
+
 	m := &Model{
 		Cfg:     cfg,
+		Engine:  eng,
 		Theme:   &t,
 		Repos:   repos.New(cfg),
-		Right:   infos.New(),
+		Right:   rightPanel,
 		Input:   commands.New(),
 		Status:  statusbar.New(),
 		Help:    help.New(),
@@ -118,6 +131,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case uxtypes.ScanResultMsg:
 		return m.handleScanResult(msg)
 
+	case uxtypes.ExecuteActionMsg:
+		return m.handleExecuteAction(msg)
+
+	case uxtypes.ActionResultMsg:
+		return m.handleActionResult(msg)
+
+	case uxtypes.ShowSuggestionsMsg:
+		// Forward to the right panel — it switches to Actions tab.
+		cmd := m.Right.Update(msg)
+
+		return m, cmd
+
 	case statusbar.TickMsg:
 		cmd, consumed := m.Status.Update(msg)
 		if consumed {
@@ -127,6 +152,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// When a confirmation is pending, intercept Y/N.
+		if m.PendingAction != nil {
+			return m.handleConfirmKey(msg)
+		}
+
 		// When the wizard is visible, it captures all keys except quit.
 		if m.Wizard.Visible {
 			return m.handleWizardKey(msg)
@@ -552,7 +582,7 @@ func (m *Model) handleRepoInfo(msg uxtypes.RepoInfoMsg) (tea.Model, tea.Cmd) {
 	}
 
 	ti := &msg.Info
-	m.Right.SetRepoInfo(ti)
+	m.Right.SetRepoInfo(ti, m.Cfg.EnabledChecks(m.SelectedRoot))
 
 	return m, nil
 }
@@ -570,7 +600,115 @@ func (m *Model) handleRepoRefresh(msg uxtypes.RepoRefreshMsg) (tea.Model, tea.Cm
 	}
 
 	ti := &msg.Info
-	m.Right.SetRepoInfo(ti)
+	m.Right.SetRepoInfo(ti, m.Cfg.EnabledChecks(m.SelectedRoot))
+
+	return m, nil
+}
+
+// handleExecuteAction runs an action in the background.
+// If the action requires confirmation (auto=false in config, or destructive),
+// the status bar shows a Y/N prompt and the action is held in PendingAction.
+func (m *Model) handleExecuteAction(msg uxtypes.ExecuteActionMsg) (tea.Model, tea.Cmd) {
+	action, ok := m.Engine.Actions.Get(msg.ActionName)
+	if !ok {
+		m.Status.SetMessage(fmt.Sprintf("Unknown action: %s", msg.ActionName))
+
+		return m, nil
+	}
+
+	// Check if confirmation is needed.
+	needsConfirm := action.Destructive() || !m.Cfg.IsActionAuto(msg.ActionName)
+	if needsConfirm {
+		m.PendingAction = &msg
+
+		label := "Run"
+		if action.Destructive() {
+			label = "⚠️  Run DESTRUCTIVE"
+		}
+
+		subjects := strings.Join(msg.Subjects, ", ")
+		if len(subjects) > 40 {
+			subjects = subjects[:37] + "..."
+		}
+
+		m.Status.SetMessage(fmt.Sprintf("%s action %q on %s?  [Y]es / [N]o", label, msg.ActionName, subjects))
+
+		return m, nil
+	}
+
+	return m, m.runAction(msg)
+}
+
+// runAction executes an action in a background tea.Cmd.
+func (m *Model) runAction(msg uxtypes.ExecuteActionMsg) tea.Cmd {
+	m.Status.SetMessage(fmt.Sprintf("Running %s...", msg.ActionName))
+
+	repoPath := msg.RepoPath
+	actionName := msg.ActionName
+	subjects := msg.Subjects
+	eng := m.Engine
+
+	return func() tea.Msg {
+		r := git.NewRunner(repoPath)
+		result, err := eng.Execute(
+			context.Background(), r, nil,
+			engine.ActionSuggestion{
+				ActionName: actionName,
+				Subjects:   subjects,
+			},
+		)
+
+		if err != nil {
+			return uxtypes.ActionResultMsg{
+				RepoPath:   repoPath,
+				ActionName: actionName,
+				OK:         false,
+				Message:    err.Error(),
+			}
+		}
+
+		return uxtypes.ActionResultMsg{
+			RepoPath:   repoPath,
+			ActionName: actionName,
+			OK:         result.OK,
+			Message:    result.Message,
+		}
+	}
+}
+
+// handleConfirmKey processes Y/N input when a confirmation is pending.
+func (m *Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y":
+		pending := m.PendingAction
+		m.PendingAction = nil
+
+		return m, m.runAction(*pending)
+
+	case "n", "N", "esc":
+		m.PendingAction = nil
+		m.Status.SetMessage("Action cancelled")
+
+		return m, nil
+
+	default:
+		// Ignore other keys while confirmation is pending.
+		return m, nil
+	}
+}
+
+// handleActionResult processes the result of an executed action.
+func (m *Model) handleActionResult(msg uxtypes.ActionResultMsg) (tea.Model, tea.Cmd) {
+	if msg.OK {
+		m.Status.SetMessage(fmt.Sprintf("✓ %s: %s", msg.ActionName, msg.Message))
+	} else {
+		m.Status.SetMessage(fmt.Sprintf("✗ %s: %s", msg.ActionName, msg.Message))
+	}
+
+	// Re-fetch the repo info to reflect changes.
+	if msg.RepoPath == m.SelectedRepo {
+		return m, fetchRepoInfo(msg.RepoPath, true)
+	}
 
 	return m, nil
 }
@@ -587,6 +725,7 @@ func (m *Model) checkSelectedRepo() tea.Cmd {
 	}
 
 	m.SelectedRepo = repo.Path
+	m.SelectedRoot = m.Repos.Active
 
 	return fetchRepoInfo(repo.Path, repo.IsGit)
 }

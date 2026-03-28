@@ -96,3 +96,24 @@ type ConfigWizardMsg struct {
 type CommandResult struct {
 	Output string
 }
+
+// ExecuteActionMsg is sent when the user selects an action to execute.
+type ExecuteActionMsg struct {
+	RepoPath   string
+	ActionName string
+	Subjects   []string
+}
+
+// ActionResultMsg is sent when an action execution completes.
+type ActionResultMsg struct {
+	RepoPath   string
+	ActionName string
+	OK         bool
+	Message    string
+}
+
+// ShowSuggestionsMsg is sent when the user presses Enter on an alert
+// to show the suggested actions for that alert.
+type ShowSuggestionsMsg struct {
+	AlertIndex int
+}

@@ -2,5 +2,24 @@ roots: []
 defaults:
   rootConfig:
     scheduleInterval: 5m
-  alerts:
-    - name: stale
+  rules:
+    checks:
+      - name: health-gc-advised
+      - name: size-repack-advised
+      - name: health-fsck-errors
+      - name: branch-lagging
+      - name: branch-merged-not-deleted
+      - name: branch-gone-upstream
+      - name: branch-no-upstream
+      - name: branch-diverged
+    actions:
+      - name: run-gc
+        auto: true
+      - name: run-gc-aggressive
+        auto: false
+      - name: update-branch
+        auto: true
+      - name: delete-branch
+        auto: false
+      - name: rebase-branch
+        auto: false

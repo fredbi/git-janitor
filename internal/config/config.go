@@ -30,7 +30,7 @@ type Config struct {
 	Roots    []LocalRoot
 	Defaults struct {
 		RootConfig *RootConfig
-		Alerts     []AlertRule
+		Rules      *RulesConfig
 	}
 }
 
@@ -50,6 +50,48 @@ type RootConfig struct {
 	// ScheduleInterval is how often the janitor should check this root
 	// for stale branches, etc.
 	ScheduleInterval time.Duration
+
+	// Rules overrides the default rules for this root.
+	// Only the Disable field is used — checks listed here are
+	// removed from the defaults.
+	Rules *RootRulesOverride `mapstructure:",omitempty"`
+}
+
+// RulesConfig defines which checks and actions are enabled by default.
+type RulesConfig struct {
+	// Checks lists the enabled checks with optional parameters.
+	Checks []CheckConfig
+
+	// Actions lists the action settings (auto-execute, confirmation, etc.).
+	Actions []ActionConfig
+}
+
+// CheckConfig configures a single check.
+type CheckConfig struct {
+	// Name is the registered check name (e.g. "branch-lagging").
+	Name string
+
+	// Params holds check-specific configuration overrides.
+	// Keys and semantics depend on the check implementation.
+	Params map[string]any `mapstructure:",omitempty"`
+}
+
+// ActionConfig configures a single action.
+type ActionConfig struct {
+	// Name is the registered action name (e.g. "run-gc").
+	Name string
+
+	// Auto indicates whether the action can be executed without user
+	// confirmation. In Phase 1 (UX-driven), non-auto actions show a
+	// confirmation popup. In Phase 2, non-auto actions queue as "pending
+	// confirmation" rather than executing immediately.
+	Auto bool
+}
+
+// RootRulesOverride allows per-root customization of the default rules.
+type RootRulesOverride struct {
+	// Disable lists check names to exclude for this root.
+	Disable []string
 }
 
 // Repository describes a single git repository discovered on disk.
@@ -94,19 +136,62 @@ const (
 	SCMKindOther  SCMKind = "other"
 )
 
-// AlertRule defines a rule that triggers an alert for a repository.
-type AlertRule struct {
-	Name string
-	Kind AlertKind
+
+// EnabledChecks returns the list of check names enabled for the given root,
+// after applying the root's disable overrides to the defaults.
+// If no rules are configured, returns nil (meaning "run all registered checks").
+func (c *Config) EnabledChecks(rootIndex int) []string {
+	rules := c.Defaults.Rules
+	if rules == nil || len(rules.Checks) == 0 {
+		return nil // no config = run all
+	}
+
+	// Start with default check names.
+	enabled := make([]string, 0, len(rules.Checks))
+	for _, ch := range rules.Checks {
+		enabled = append(enabled, ch.Name)
+	}
+
+	// Apply per-root disable list.
+	if rootIndex >= 0 && rootIndex < len(c.Roots) {
+		override := c.Roots[rootIndex].RootConfig.Rules
+		if override != nil {
+			disabled := make(map[string]bool, len(override.Disable))
+			for _, name := range override.Disable {
+				disabled[name] = true
+			}
+
+			filtered := enabled[:0]
+			for _, name := range enabled {
+				if !disabled[name] {
+					filtered = append(filtered, name)
+				}
+			}
+
+			enabled = filtered
+		}
+	}
+
+	return enabled
 }
 
-type AlertKind string
+// IsActionAuto reports whether the named action is configured for
+// auto-execution (no user confirmation needed).
+// Returns false if the action is not configured or not set to auto.
+func (c *Config) IsActionAuto(name string) bool {
+	rules := c.Defaults.Rules
+	if rules == nil {
+		return false
+	}
 
-const (
-	AlertKindGit   = "git"
-	AlertKindSCM   = "scm"
-	AlertKindLocal = "local"
-)
+	for _, a := range rules.Actions {
+		if a.Name == name {
+			return a.Auto
+		}
+	}
+
+	return false
+}
 
 // DefaultConfigPath returns the full path to the configuration file
 // under the user's config directory (e.g. $HOME/.config/git-janitor/config.yaml).

@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fredbi/git-janitor/internal/engine"
 	"github.com/fredbi/git-janitor/internal/git"
 	actions "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-actions"
 	alerts "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-alerts"
@@ -38,6 +39,15 @@ type Panel struct {
 	Active   RightTab
 	Width    int
 	Height   int
+
+	// Engine evaluates checks and produces alerts.
+	Engine *engine.Engine
+
+	// RepoPath is the path of the currently displayed repo (for action execution).
+	RepoPath string
+
+	// LastAlerts stores the most recent evaluation results for suggestion lookup.
+	LastAlerts []engine.Alert
 }
 
 // New creates a new Panel with default tab sub-panels.
@@ -81,10 +91,18 @@ var RightTabDefs = []struct { //nolint:gochecknoglobals // tab definition table
 	{"Recent", TabRecent},
 }
 
-// SetRepoInfo updates the facts and branches panels with new repo data.
-func (p *Panel) SetRepoInfo(info *git.RepoInfo) {
+// SetRepoInfo updates all panels with new repo data.
+// If an engine is configured, it evaluates checks and populates the alerts panel.
+func (p *Panel) SetRepoInfo(info *git.RepoInfo, enabledChecks []string) {
+	p.RepoPath = info.Path
 	p.Facts.SetInfo(info)
 	p.Branches.SetInfo(info)
+	p.Actions.Clear()
+
+	if p.Engine != nil {
+		p.LastAlerts = p.Engine.EvaluateRepo(nil, info, enabledChecks) //nolint:staticcheck // ctx not needed for pure evaluation
+		p.Alerts.SetAlerts(p.LastAlerts)
+	}
 }
 
 // TabAtX returns the tab index for a click at the given x offset
@@ -137,6 +155,22 @@ func (p *Panel) SetSize(w, h int) {
 
 // Update forwards the message to the currently active tab sub-panel.
 func (p *Panel) Update(msg tea.Msg) tea.Cmd {
+	// Handle ShowSuggestionsMsg: switch to Actions tab and populate it.
+	if sm, ok := msg.(uxtypes.ShowSuggestionsMsg); ok {
+		if sm.AlertIndex >= 0 && sm.AlertIndex < len(p.Alerts.Alerts) {
+			alert := p.Alerts.Alerts[sm.AlertIndex]
+
+			if p.Engine != nil {
+				p.Actions.Actions = p.Engine.Actions
+			}
+
+			p.Actions.SetAlert(p.RepoPath, &alert)
+			p.Active = TabActions
+		}
+
+		return nil
+	}
+
 	switch p.Active {
 	case TabFacts:
 		return p.Facts.Update(msg)

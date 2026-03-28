@@ -1,86 +1,83 @@
 package alerts
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fredbi/git-janitor/internal/engine"
 	"github.com/fredbi/git-janitor/internal/ux/types"
 )
 
-// Severity represents the urgency level of an alert.
-type Severity int
-
-const (
-	SeverityHigh   Severity = iota // red bullet
-	SeverityMedium                 // orange bullet
-	SeverityLow                    // yellow bullet
-)
-
-// severityBullet returns a colored emoji for the given Severity.
-func severityBullet(s Severity) string {
+// severityBullet returns a colored emoji for the given engine.Severity.
+func severityBullet(s engine.Severity) string {
 	switch s {
-	case SeverityHigh:
+	case engine.SeverityHigh:
 		return "🔴"
-	case SeverityMedium:
+	case engine.SeverityMedium:
 		return "🟠"
-	case SeverityLow:
+	case engine.SeverityLow:
 		return "🟡"
+	case engine.SeverityInfo:
+		return "🔵"
 	default:
 		return "⚪"
 	}
 }
 
-// scheduledCheckbox returns a checkbox emoji.
-func scheduledCheckbox(scheduled bool) string {
-	if scheduled {
-		return " ✅"
-	}
-
-	return " ⬜"
-}
-
-// AlertEntry holds the structured data for an alert row.
-type AlertEntry struct {
-	Severity  Severity
-	Message   string
-	Detail    string
-	Scheduled bool
-}
-
-// column widths (Severity bullet is narrow, scheduled is fixed).
+// column widths.
 const (
-	colWidthSeverity  = 3
-	colWidthScheduled = 5
-	colWidthMinMsg    = 20
+	colWidthSeverity = 3
+	colWidthActions  = 5
+	colWidthMinMsg   = 20
 )
 
 // AlertsPanel displays alerts as a hand-rendered borderless table
 // with colored cells, using manual cursor management for scrolling.
 type AlertsPanel struct {
-	Entries []AlertEntry
-	Cursor  int
-	Offset  int // scroll offset (first visible row index)
-	Width   int
-	Height  int
+	Alerts []engine.Alert // real alerts from the engine
+	Cursor int
+	Offset int // scroll offset (first visible row index)
+	Width  int
+	Height int
 }
 
-// New creates a new AlertsPanel with sample entries.
+// New creates a new AlertsPanel with no entries.
 func New() AlertsPanel {
-	entries := []AlertEntry{
-		{SeverityHigh, "Stale branches", "3 branches older than 90 days", false},
-		{SeverityMedium, "Merged branches", "2 branches already merged to main", true},
-		{SeverityLow, "Large files", "1 file over 50MB detected", false},
-		{SeverityHigh, "Unpushed commits", "5 commits ahead of origin/main", false},
+	return AlertsPanel{}
+}
+
+// SetAlerts replaces the displayed alerts with new ones.
+// Alerts with SeverityNone are filtered out (check passed, nothing wrong).
+func (p *AlertsPanel) SetAlerts(alerts []engine.Alert) {
+	p.Alerts = p.Alerts[:0]
+
+	for _, a := range alerts {
+		if a.Severity == engine.SeverityNone {
+			continue
+		}
+
+		p.Alerts = append(p.Alerts, a)
 	}
 
-	return AlertsPanel{Entries: entries}
+	p.Cursor = 0
+	p.Offset = 0
+}
+
+// SelectedAlert returns the currently selected alert, if any.
+func (p *AlertsPanel) SelectedAlert() (engine.Alert, bool) {
+	if len(p.Alerts) == 0 || p.Cursor < 0 || p.Cursor >= len(p.Alerts) {
+		return engine.Alert{}, false
+	}
+
+	return p.Alerts[p.Cursor], true
 }
 
 func (p *AlertsPanel) SetSize(w, h int) {
 	p.Width = w
-	// Reserve 1 line for the header.
-	p.Height = h - 1
+	p.Height = h - 1 // reserve 1 line for header
+
 	if p.Height < 1 {
 		p.Height = 1
 	}
@@ -101,7 +98,7 @@ func (p *AlertsPanel) Update(msg tea.Msg) tea.Cmd {
 			p.clampScroll()
 		}
 	case "down", "j":
-		if p.Cursor < len(p.Entries)-1 {
+		if p.Cursor < len(p.Alerts)-1 {
 			p.Cursor++
 			p.clampScroll()
 		}
@@ -109,15 +106,21 @@ func (p *AlertsPanel) Update(msg tea.Msg) tea.Cmd {
 		p.Cursor = 0
 		p.clampScroll()
 	case "end", "G":
-		p.Cursor = max(0, len(p.Entries)-1)
+		p.Cursor = max(0, len(p.Alerts)-1)
 		p.clampScroll()
+	case "enter":
+		// Show suggested actions for the selected alert.
+		if len(p.Alerts) > 0 {
+			return func() tea.Msg {
+				return types.ShowSuggestionsMsg{AlertIndex: p.Cursor}
+			}
+		}
 	}
 
 	return nil
 }
 
 func (p *AlertsPanel) clampScroll() {
-	// Ensure cursor is visible within the scroll window.
 	if p.Cursor < p.Offset {
 		p.Offset = p.Cursor
 	}
@@ -128,12 +131,11 @@ func (p *AlertsPanel) clampScroll() {
 }
 
 func (p *AlertsPanel) View() string {
-	msgWidth := p.Width - colWidthSeverity - colWidthScheduled - 4 // gaps between columns
+	msgWidth := p.Width - colWidthSeverity - colWidthActions - 4
 	if msgWidth < colWidthMinMsg {
 		msgWidth = colWidthMinMsg
 	}
 
-	// Styles.
 	t := types.CurrentTheme
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -149,35 +151,48 @@ func (p *AlertsPanel) View() string {
 
 	sevCol := lipgloss.NewStyle().Width(colWidthSeverity).Align(lipgloss.Center)
 	msgCol := lipgloss.NewStyle().Width(msgWidth)
-	schedCol := lipgloss.NewStyle().Width(colWidthScheduled).Align(lipgloss.Center)
+	actCol := lipgloss.NewStyle().Width(colWidthActions).Align(lipgloss.Center)
 
-	// Header row.
 	header := lipgloss.JoinHorizontal(lipgloss.Top,
 		sevCol.Render(headerStyle.Render(" ")),
 		" ",
-		msgCol.Render(headerStyle.Render("Message")),
+		msgCol.Render(headerStyle.Render("Alert")),
 		" ",
-		schedCol.Render(headerStyle.Render("Sched")),
+		actCol.Render(headerStyle.Render("Fix?")),
 	)
 
-	// Data rows.
+	if len(p.Alerts) == 0 {
+		empty := detailStyle.Render("  No alerts for this repository")
+
+		return header + "\n" + empty
+	}
+
 	var rows []string
+
 	end := p.Offset + p.Height
-	if end > len(p.Entries) {
-		end = len(p.Entries)
+	if end > len(p.Alerts) {
+		end = len(p.Alerts)
 	}
 
 	for i := p.Offset; i < end; i++ {
-		e := p.Entries[i]
+		a := p.Alerts[i]
 
-		msgText := e.Message + "  " + detailStyle.Render(e.Detail)
+		msgText := a.Summary
+		if a.Detail != "" {
+			msgText += "  " + detailStyle.Render(a.Detail)
+		}
+
+		fixIcon := " "
+		if len(a.Suggestions) > 0 {
+			fixIcon = fmt.Sprintf("⚡%d", len(a.Suggestions))
+		}
 
 		row := lipgloss.JoinHorizontal(lipgloss.Top,
-			sevCol.Render(severityBullet(e.Severity)),
+			sevCol.Render(severityBullet(a.Severity)),
 			" ",
 			msgCol.Render(msgText),
 			" ",
-			schedCol.Render(scheduledCheckbox(e.Scheduled)),
+			actCol.Render(fixIcon),
 		)
 
 		if i == p.Cursor {
@@ -187,7 +202,6 @@ func (p *AlertsPanel) View() string {
 		rows = append(rows, row)
 	}
 
-	// Pad remaining lines if fewer rows than height.
 	for len(rows) < p.Height {
 		rows = append(rows, "")
 	}
