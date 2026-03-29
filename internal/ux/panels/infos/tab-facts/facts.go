@@ -7,15 +7,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/git"
+	"github.com/fredbi/git-janitor/internal/github"
 	"github.com/fredbi/git-janitor/internal/ux/types"
 )
 
 // FactsPanel displays a quick recap of the selected repository's properties.
 type FactsPanel struct {
-	Info   *git.RepoInfo
-	Offset int // scroll offset
-	Width  int
-	Height int
+	Info       *git.RepoInfo
+	GitHubData *github.RepoData
+	Offset     int // scroll offset
+	Width      int
+	Height     int
 }
 
 // New creates a new FactsPanel.
@@ -25,7 +27,12 @@ func New() FactsPanel {
 
 func (p *FactsPanel) SetInfo(info *git.RepoInfo) {
 	p.Info = info
+	p.GitHubData = nil // clear until GitHub data arrives
 	p.Offset = 0
+}
+
+func (p *FactsPanel) SetGitHubData(data *github.RepoData) {
+	p.GitHubData = data
 }
 
 func (p *FactsPanel) SetSize(w, h int) {
@@ -224,6 +231,86 @@ func (p *FactsPanel) buildLines() []string {
 		}
 	}
 
+	// GitHub section.
+	lines = append(lines, p.buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle)...)
+
+	return lines
+}
+
+func (p *FactsPanel) buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle lipgloss.Style) []string {
+	gh := p.GitHubData
+	if gh == nil {
+		return nil
+	}
+
+	var lines []string
+
+	sep := dimStyle.Render("  ── GitHub ──────────────")
+	lines = append(lines, "", sep)
+
+	line := func(label, value string) {
+		lines = append(lines, fmt.Sprintf("  %s  %s", labelStyle.Render(label), valStyle.Render(value)))
+	}
+
+	if gh.Err != nil {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			labelStyle.Render("Status:"),
+			warnStyle.Render(gh.Err.Error()),
+		))
+
+		return lines
+	}
+
+	// Visibility.
+	vis := "public"
+	if gh.IsPrivate {
+		vis = "private"
+	}
+
+	line("Visibility:", vis)
+
+	// Fork lineage.
+	if gh.IsFork && gh.ParentFullName != "" {
+		line("Fork of:", gh.ParentFullName)
+	}
+
+	// Description.
+	if gh.Description != "" {
+		desc := gh.Description
+		maxLen := p.Width - 20
+		if maxLen > 0 && len(desc) > maxLen {
+			desc = desc[:maxLen-1] + "…"
+		}
+
+		line("Description:", desc)
+	}
+
+	// Counts on one line.
+	counts := fmt.Sprintf("★ %d  Forks: %d  Issues: %d  PRs: %d",
+		gh.StarCount, gh.ForkCount, gh.OpenIssues, gh.OpenPRs)
+	lines = append(lines, fmt.Sprintf("  %s", valStyle.Render(counts)))
+
+	// License.
+	if gh.License != "" {
+		line("License:", gh.License)
+	}
+
+	// Archived.
+	if gh.IsArchived {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			labelStyle.Render("Archived:"),
+			warnStyle.Render("yes"),
+		))
+	}
+
+	// Security alerts — per-scanner status.
+	lines = append(lines, p.buildSecurityLines(gh, labelStyle, valStyle, dimStyle, warnStyle)...)
+
+	// Topics.
+	if len(gh.Topics) > 0 {
+		line("Topics:", strings.Join(gh.Topics, ", "))
+	}
+
 	return lines
 }
 
@@ -246,6 +333,68 @@ func classifyEntries(entries []git.StatusEntry) (staged, unstaged, untracked int
 	}
 
 	return
+}
+
+func (p *FactsPanel) buildSecurityLines(gh *github.RepoData, labelStyle, valStyle, dimStyle, warnStyle lipgloss.Style) []string {
+	if gh.SecuritySkipped {
+		return []string{fmt.Sprintf("  %s  %s",
+			labelStyle.Render("Security:"),
+			dimStyle.Render("not queried"),
+		)}
+	}
+
+	dep := gh.DependabotAlerts
+	code := gh.CodeScanningAlerts
+	secret := gh.SecretScanningAlerts
+
+	// All inaccessible: show a single dim line.
+	if dep < 0 && code < 0 && secret < 0 {
+		return []string{fmt.Sprintf("  %s  %s",
+			labelStyle.Render("Security:"),
+			dimStyle.Render("no access to security APIs"),
+		)}
+	}
+
+	var lines []string
+
+	scannerLine := func(name string, count int) {
+		switch {
+		case count < 0:
+			lines = append(lines, fmt.Sprintf("    %s  %s",
+				dimStyle.Render(name+":"),
+				dimStyle.Render("no access"),
+			))
+		case count == 0:
+			lines = append(lines, fmt.Sprintf("    %s  %s",
+				dimStyle.Render(name+":"),
+				valStyle.Render("clean"),
+			))
+		default:
+			lines = append(lines, fmt.Sprintf("    %s  %s",
+				dimStyle.Render(name+":"),
+				warnStyle.Render(fmt.Sprintf("%d open", count)),
+			))
+		}
+	}
+
+	total := gh.SecurityAlerts()
+	if total > 0 {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			labelStyle.Render("Security:"),
+			warnStyle.Render(fmt.Sprintf("%d open alert(s)", total)),
+		))
+	} else {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			labelStyle.Render("Security:"),
+			valStyle.Render("no open alerts"),
+		))
+	}
+
+	scannerLine("Dependabot", dep)
+	scannerLine("Code scanning", code)
+	scannerLine("Secret scanning", secret)
+
+	return lines
 }
 
 // countBranches counts local and remote branches.

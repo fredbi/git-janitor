@@ -119,9 +119,32 @@ func (p *AlertsPanel) Update(msg tea.Msg) tea.Cmd {
 				return types.ShowSuggestionsMsg{AlertIndex: p.Cursor}
 			}
 		}
+	case "c":
+		// Copy URL from the selected alert's suggestion to clipboard.
+		if url := p.selectedAlertURL(); url != "" {
+			return func() tea.Msg {
+				return types.CopyToClipboardMsg{Text: url}
+			}
+		}
 	}
 
 	return nil
+}
+
+// selectedAlertURL returns the first URL-like subject from the
+// selected alert's suggestions (used by open-in-browser actions).
+func (p *AlertsPanel) selectedAlertURL() string {
+	if p.Cursor < 0 || p.Cursor >= len(p.Alerts) {
+		return ""
+	}
+
+	for _, s := range p.Alerts[p.Cursor].Suggestions {
+		if s.ActionName == "open-in-browser" && len(s.Subjects) > 0 {
+			return s.Subjects[0]
+		}
+	}
+
+	return ""
 }
 
 func (p *AlertsPanel) clampScroll() {
@@ -148,7 +171,12 @@ func (p *AlertsPanel) View() string {
 
 	header := headerStyle.Render(fmt.Sprintf("  Alerts (%d)", len(p.Alerts)))
 	if len(p.Alerts) > 0 {
-		header += "  " + detailStyle.Render("Enter: show actions")
+		hints := "Enter: show actions"
+		if p.selectedAlertURL() != "" {
+			hints += "  c: copy URL"
+		}
+
+		header += "  " + detailStyle.Render(hints)
 	}
 
 	if len(p.Alerts) == 0 {

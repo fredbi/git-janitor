@@ -73,7 +73,7 @@ type ConfigWizard struct {
 }
 
 // editRootFields defines the fields available for editing on a root.
-var editRootFields = []string{"Path", "Name", "Interval"} //nolint:gochecknoglobals // wizard field list
+var editRootFields = []string{"Path", "Name", "Interval", "GitHub", "Security Alerts"} //nolint:gochecknoglobals // wizard field list
 
 // New creates a new ConfigWizard for the given configuration.
 func New(cfg *config.Config) ConfigWizard {
@@ -442,6 +442,14 @@ func (w *ConfigWizard) handleEditRootKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 			w.EditInput.Focus()
 
 			return textinput.Blink, nil
+		case "GitHub":
+			w.toggleRootGitHub()
+
+			return nil, nil
+		case "Security Alerts":
+			w.toggleRootSecurityAlerts()
+
+			return nil, nil
 		}
 
 	case "s", "S":
@@ -592,6 +600,47 @@ func (w *ConfigWizard) handleEditIntervalKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.
 
 		return cmd, nil
 	}
+}
+
+// toggleRootGitHub toggles the per-root GitHub.Enabled override.
+func (w *ConfigWizard) toggleRootGitHub() {
+	if w.EditIndex < 0 || w.EditIndex >= len(w.Cfg.Roots) {
+		return
+	}
+
+	root := &w.Cfg.Roots[w.EditIndex]
+	if root.RootConfig.GitHub == nil {
+		// First toggle: inherit global, then flip.
+		enabled := !w.Cfg.GitHub.Enabled
+		root.RootConfig.GitHub = &config.GitHubConfig{Enabled: enabled}
+	} else {
+		root.RootConfig.GitHub.Enabled = !root.RootConfig.GitHub.Enabled
+	}
+
+	w.Dirty = true
+}
+
+// toggleRootSecurityAlerts toggles the per-root GitHub.SecurityAlerts override.
+func (w *ConfigWizard) toggleRootSecurityAlerts() {
+	if w.EditIndex < 0 || w.EditIndex >= len(w.Cfg.Roots) {
+		return
+	}
+
+	root := &w.Cfg.Roots[w.EditIndex]
+	if root.RootConfig.GitHub == nil {
+		root.RootConfig.GitHub = &config.GitHubConfig{Enabled: w.Cfg.GitHub.Enabled}
+	}
+
+	if root.RootConfig.GitHub.SecurityAlerts == nil {
+		// First toggle: inherit global, then flip.
+		v := !w.Cfg.GitHubSecurityAlerts(w.EditIndex)
+		root.RootConfig.GitHub.SecurityAlerts = &v
+	} else {
+		v := !*root.RootConfig.GitHub.SecurityAlerts
+		root.RootConfig.GitHub.SecurityAlerts = &v
+	}
+
+	w.Dirty = true
 }
 
 func (w *ConfigWizard) handlePathKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWizardMsg) {
@@ -886,6 +935,27 @@ func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	selected := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
 
+	ghEnabled := w.Cfg.GitHubEnabled(w.EditIndex)
+	ghSecurity := w.Cfg.GitHubSecurityAlerts(w.EditIndex)
+
+	ghLabel := "yes"
+	if !ghEnabled {
+		ghLabel = "no"
+	}
+
+	secLabel := "yes"
+	if !ghSecurity {
+		secLabel = "no"
+	}
+
+	// Show "(inherited)" when no per-root override is set.
+	if root.RootConfig.GitHub == nil {
+		ghLabel += " (inherited)"
+		secLabel += " (inherited)"
+	} else if root.RootConfig.GitHub.SecurityAlerts == nil {
+		secLabel += " (inherited)"
+	}
+
 	fields := []struct {
 		label string
 		value string
@@ -893,6 +963,8 @@ func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {
 		{"Path", root.Path},
 		{"Name", w.Cfg.RootDisplayName(w.EditIndex)},
 		{"Interval", root.RootConfig.ScheduleInterval.String()},
+		{"GitHub", ghLabel},
+		{"Security Alerts", secLabel},
 	}
 
 	for i, f := range fields {
@@ -910,7 +982,7 @@ func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {
 	content.WriteString("\n")
 
 	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	content.WriteString(hint.Render("  ↑/↓ select   Enter edit field   Esc back") + "\n")
+	content.WriteString(hint.Render("  ↑/↓ select   Enter edit/toggle   Esc back") + "\n")
 }
 
 func (w *ConfigWizard) viewEditPath(content *strings.Builder) {

@@ -68,4 +68,18 @@ func RegisterAll(r *engine.ActionRegistry) {
 			CheckDescription: "fetch all tags from all remotes",
 		},
 	}})
+
+	r.Register(ActionDeleteLocalClone{GitAction: engine.GitAction{
+		Describer: engine.Describer{
+			CheckName:        "delete-local-clone",
+			CheckDescription: "permanently delete the local clone directory",
+		},
+	}})
+
+	r.Register(ActionOpenInBrowser{GitAction: engine.GitAction{
+		Describer: engine.Describer{
+			CheckName:        "open-in-browser",
+			CheckDescription: "open a URL in the default browser",
+		},
+	}})
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/fredbi/git-janitor/internal/engine"
 	"github.com/fredbi/git-janitor/internal/engine/setup"
 	"github.com/fredbi/git-janitor/internal/git"
+	"github.com/fredbi/git-janitor/internal/github"
 	"github.com/fredbi/git-janitor/internal/ux/commands"
 	wizard "github.com/fredbi/git-janitor/internal/ux/commands/config-wizard"
 	"github.com/fredbi/git-janitor/internal/ux/commands/help"
@@ -37,8 +38,9 @@ const paneCount = 3
 
 // Model represents the top-level state of the TUI.
 type Model struct {
-	Cfg    *config.Config
-	Engine *engine.Engine
+	Cfg          *config.Config
+	Engine       *engine.Engine
+	GitHubClient *github.Client
 
 	Repos  repos.Panel
 	Right  infos.Panel
@@ -77,9 +79,10 @@ func New(cfg *config.Config) *Model {
 	rightPanel.Engine = eng
 
 	m := &Model{
-		Cfg:     cfg,
-		Engine:  eng,
-		Theme:   &t,
+		Cfg:          cfg,
+		Engine:       eng,
+		GitHubClient: github.NewClient(),
+		Theme:        &t,
 		Repos:   repos.New(cfg),
 		Right:   rightPanel,
 		Input:   commands.New(),
@@ -134,6 +137,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case uxtypes.ExecuteActionMsg:
 		return m.handleExecuteAction(msg)
+
+	case uxtypes.GitHubInfoMsg:
+		return m.handleGitHubInfo(msg)
+
+	case uxtypes.CopyToClipboardMsg:
+		if err := copyToClipboard(msg.Text); err != nil {
+			m.Status.SetMessage("Clipboard: " + err.Error())
+		} else {
+			m.Status.SetMessage("Copied to clipboard")
+		}
+
+		return m, nil
 
 	case uxtypes.ActionResultMsg:
 		return m.handleActionResult(msg)
@@ -592,6 +607,11 @@ func (m *Model) handleRepoInfo(msg uxtypes.RepoInfoMsg) (tea.Model, tea.Cmd) {
 	m.LastRepoInfo = ti
 	m.Right.SetRepoInfo(ti, m.Cfg.EnabledChecks(m.SelectedRoot))
 
+	// Trigger async GitHub fetch if applicable.
+	if cmd := m.triggerGitHubFetch(ti, false); cmd != nil {
+		return m, cmd
+	}
+
 	return m, nil
 }
 
@@ -613,7 +633,76 @@ func (m *Model) handleRepoRefresh(msg uxtypes.RepoRefreshMsg) (tea.Model, tea.Cm
 	m.LastRepoInfo = ti
 	m.Right.SetRepoInfo(ti, m.Cfg.EnabledChecks(m.SelectedRoot))
 
+	// Trigger async GitHub fetch (force refresh on Ctrl+R).
+	if cmd := m.triggerGitHubFetch(ti, true); cmd != nil {
+		return m, cmd
+	}
+
 	return m, nil
+}
+
+// handleGitHubInfo processes the result of an async GitHub API fetch.
+func (m *Model) handleGitHubInfo(msg uxtypes.GitHubInfoMsg) (tea.Model, tea.Cmd) {
+	// Only apply if this is still the selected repo.
+	if msg.RepoPath != m.SelectedRepo {
+		return m, nil
+	}
+
+	if msg.Data.Err != nil {
+		m.Status.SetMessage("GitHub: " + msg.Data.Err.Error())
+	}
+
+	// Inject local default branch for cross-check.
+	if m.LastRepoInfo != nil {
+		msg.Data.LocalDefaultBranch = m.LastRepoInfo.DefaultBranch
+	}
+
+	m.Right.SetGitHubData(msg.Data, m.Cfg.EnabledChecks(m.SelectedRoot))
+
+	return m, nil
+}
+
+// triggerGitHubFetch fires an async GitHub API fetch if the repo is GitHub-hosted,
+// a token is available, and GitHub is enabled for the current root.
+func (m *Model) triggerGitHubFetch(info *git.RepoInfo, forceRefresh bool) tea.Cmd {
+	if info.SCM != git.SCMGitHub {
+		return nil
+	}
+
+	if !m.GitHubClient.Available() {
+		return nil
+	}
+
+	if !m.Cfg.GitHubEnabled(m.SelectedRoot) {
+		return nil
+	}
+
+	originURL := git.OriginFetchURL(info.Remotes)
+	owner, repo, err := github.ExtractOwnerRepo(originURL)
+
+	if err != nil {
+		return nil
+	}
+
+	repoPath := info.Path
+	client := m.GitHubClient
+	fetchOpts := github.FetchOptions{
+		ForceRefresh:  forceRefresh,
+		FetchSecurity: m.Cfg.GitHubSecurityAlerts(m.SelectedRoot),
+	}
+
+	return func() tea.Msg {
+		data := client.Fetch(context.Background(), owner, repo, fetchOpts)
+		if data == nil {
+			data = github.NewRepoData(owner, repo)
+			data.Err = fmt.Errorf("no data returned")
+		}
+
+		return uxtypes.GitHubInfoMsg{
+			RepoPath: repoPath,
+			Data:     data,
+		}
+	}
 }
 
 // handleExecuteAction runs an action in the background.

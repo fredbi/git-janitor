@@ -1,4 +1,7 @@
 roots: []
+github:
+  enabled: true
+  securityAlerts: true
 defaults:
   rootConfig:
     scheduleInterval: 5m
@@ -31,6 +34,16 @@ defaults:
       - name: traits-shallow
       - name: traits-submodules
       - name: traits-lfs
+      # GitHub (API-based, require GITHUB_TOKEN or GH_TOKEN)
+      - name: github-repo-archived
+      - name: github-default-branch-mismatch
+      - name: github-description-missing
+      - name: github-visibility-private
+      - name: github-repo-fork-parent
+      - name: github-security-alerts
+      # Expensive / opt-in (uncomment or enable per-root):
+      # - name: github-issues-unresponded
+      # - name: github-prs-pending-review
     actions:
       # Branch actions
       - name: delete-branch
@@ -50,4 +63,10 @@ defaults:
       - name: push-tag
         auto: false
       - name: fetch-tags
+        auto: true
+      # Clone management
+      - name: delete-local-clone
+        auto: false
+      # Browser
+      - name: open-in-browser
         auto: true

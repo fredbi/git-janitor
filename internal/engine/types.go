@@ -117,6 +117,24 @@ type ActionSuggestion struct {
 	// Subjects lists the specific instances to act on
 	// (e.g., branch names, tag names).
 	Subjects []string
+
+	// Params is a parallel slice to Subjects (same length, index-aligned).
+	// Each entry carries action-specific parameters for the corresponding subject.
+	// nil or shorter than Subjects means no params for those subjects.
+	//
+	// Future: refactor Subjects into []ActionSubject that embeds both
+	// the name and params per subject.
+	Params []map[string]string
+}
+
+// SubjectParams returns the params for the subject at index i,
+// or nil if no params are set.
+func (s ActionSuggestion) SubjectParams(i int) map[string]string {
+	if i < 0 || i >= len(s.Params) {
+		return nil
+	}
+
+	return s.Params[i]
 }
 
 // Result holds the outcome of an executed action.

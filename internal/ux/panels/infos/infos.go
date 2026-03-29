@@ -2,12 +2,14 @@ package infos
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/engine"
 	"github.com/fredbi/git-janitor/internal/git"
+	"github.com/fredbi/git-janitor/internal/github"
 	actions "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-actions"
 	alerts "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-alerts"
 	branches "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-branches"
@@ -104,6 +106,37 @@ func (p *Panel) SetRepoInfo(info *git.RepoInfo, enabledChecks []string) {
 		p.LastAlerts = p.Engine.EvaluateRepo(nil, info, enabledChecks) //nolint:staticcheck // ctx not needed for pure evaluation
 		p.Alerts.SetAlerts(p.LastAlerts)
 	}
+}
+
+// SetGitHubData updates the panel with GitHub API data.
+// It evaluates GitHub checks, merges their alerts with the existing git alerts,
+// and updates the Facts panel with a GitHub sub-section.
+func (p *Panel) SetGitHubData(data *github.RepoData, enabledChecks []string) {
+	p.Facts.SetGitHubData(data)
+
+	if p.Engine == nil || data.Err != nil {
+		return
+	}
+
+	ghAlerts := p.Engine.EvaluateGitHub(nil, data, enabledChecks) //nolint:staticcheck // ctx not needed for pure evaluation
+
+	// Merge: append GitHub alerts to existing git alerts, re-sort by severity.
+	merged := make([]engine.Alert, 0, len(p.LastAlerts)+len(ghAlerts))
+
+	for _, a := range p.LastAlerts {
+		merged = append(merged, a)
+	}
+
+	for _, a := range ghAlerts {
+		merged = append(merged, a)
+	}
+
+	slices.SortStableFunc(merged, func(a, b engine.Alert) int {
+		return int(b.Severity) - int(a.Severity)
+	})
+
+	p.LastAlerts = merged
+	p.Alerts.SetAlerts(p.LastAlerts)
 }
 
 // TabAtX returns the tab index for a click at the given x offset

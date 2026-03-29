@@ -1,0 +1,17 @@
+name: go test
+
+permissions:
+  pull-requests: read
+  contents: read
+
+on:
+  push:
+    branches:
+      - master
+
+  pull_request:
+
+jobs:
+  test:
+    uses: go-openapi/ci-workflows/.github/workflows/go-test.yml@9e70984764198f45640ca9f0752a51a8ca159b99 # v0.1.2
+    secrets: inherit

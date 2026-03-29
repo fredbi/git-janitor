@@ -5,6 +5,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/config"
 	"github.com/fredbi/git-janitor/internal/git"
+	"github.com/fredbi/git-janitor/internal/github"
 )
 
 // Theme defines the color palette for the entire UI.
@@ -116,4 +117,15 @@ type ActionResultMsg struct {
 // to show the suggested actions for that alert.
 type ShowSuggestionsMsg struct {
 	AlertIndex int
+}
+
+// CopyToClipboardMsg is sent when the user wants to copy text to the clipboard.
+type CopyToClipboardMsg struct {
+	Text string
+}
+
+// GitHubInfoMsg is sent when background GitHub API fetch completes.
+type GitHubInfoMsg struct {
+	RepoPath string
+	Data     *github.RepoData
 }

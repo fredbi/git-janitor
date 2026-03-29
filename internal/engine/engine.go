@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/fredbi/git-janitor/internal/git"
+	"github.com/fredbi/git-janitor/internal/github"
 )
 
 // gitCheckEvaluator is implemented by any check that can evaluate git.RepoInfo.
@@ -15,14 +16,19 @@ type gitCheckEvaluator interface {
 	Evaluate(info *git.RepoInfo) (iter.Seq[Alert], error)
 }
 
-// githubCheckEvaluator is implemented by any check that can evaluate GitHubRepoData.
+// githubCheckEvaluator is implemented by any check that can evaluate github.RepoData.
 type githubCheckEvaluator interface {
-	Evaluate(data *GitHubRepoData) (iter.Seq[Alert], error)
+	Evaluate(data *github.RepoData) (iter.Seq[Alert], error)
 }
 
 // gitActionExecutor is implemented by any action that can execute via git.Runner.
 type gitActionExecutor interface {
 	Execute(ctx context.Context, r *git.Runner, info *git.RepoInfo, subjects []string) (Result, error)
+}
+
+// githubActionExecutor is implemented by any action that can execute via github.Client.
+type githubActionExecutor interface {
+	Execute(ctx context.Context, client *github.Client, data *github.RepoData, subjects []string, params []map[string]string) (Result, error)
 }
 
 // Engine is the orchestrator that connects configuration rules to check
@@ -74,9 +80,9 @@ func (e *Engine) Evaluate(check Check, input RepoInfo) (iter.Seq[Alert], error) 
 			return nil, fmt.Errorf("engine: check %q (kind=github) does not implement githubCheckEvaluator", check.Name())
 		}
 
-		data, ok := input.(*GitHubRepoData)
+		data, ok := input.(*github.RepoData)
 		if !ok {
-			return nil, fmt.Errorf("engine: GitHubCheck %q expects *GitHubRepoData, got %T", check.Name(), input)
+			return nil, fmt.Errorf("engine: GitHubCheck %q expects *github.RepoData, got %T", check.Name(), input)
 		}
 
 		return gc.Evaluate(data)
@@ -144,6 +150,72 @@ func (e *Engine) EvaluateRepo(_ context.Context, info *git.RepoInfo, enabledChec
 	return alerts
 }
 
+// EvaluateGitHub runs all enabled GitHub checks for a repository and collects
+// the resulting alerts. This parallels [EvaluateRepo] for git checks.
+//
+// The enabledChecks parameter is the list of check names from config.
+// If empty, or if no github-* checks are in the list, all registered
+// GitHub checks are run. This handles the common case where a user's
+// config predates the addition of GitHub checks.
+func (e *Engine) EvaluateGitHub(_ context.Context, data *github.RepoData, enabledChecks []string) []Alert {
+	// If the enabled list has no GitHub checks, run all of them.
+	hasGitHubChecks := false
+	for _, name := range enabledChecks {
+		if len(name) > 7 && name[:7] == "github-" {
+			hasGitHubChecks = true
+
+			break
+		}
+	}
+
+	var alerts []Alert
+
+	for name, check := range e.Checks.All() {
+		if check.Kind() != CheckKindGitHub {
+			continue
+		}
+
+		if hasGitHubChecks && !slices.Contains(enabledChecks, name) {
+			continue
+		}
+
+		gc, ok := check.(githubCheckEvaluator)
+		if !ok {
+			continue
+		}
+
+		seq, err := gc.Evaluate(data)
+		if err != nil {
+			alerts = append(alerts, Alert{
+				CheckName: name,
+				Severity:  SeverityHigh,
+				Summary:   fmt.Sprintf("check %q failed: %v", name, err),
+			})
+
+			continue
+		}
+
+		if seq == nil {
+			alerts = append(alerts, Alert{
+				CheckName: name,
+				Severity:  SeverityNone,
+			})
+
+			continue
+		}
+
+		for alert := range seq {
+			alerts = append(alerts, alert)
+		}
+	}
+
+	slices.SortStableFunc(alerts, func(a, b Alert) int {
+		return int(b.Severity) - int(a.Severity)
+	})
+
+	return alerts
+}
+
 // Execute runs a suggested action after validating that the action's
 // SubjectKind matches the suggestion's SubjectKind.
 func (e *Engine) Execute(
@@ -172,4 +244,24 @@ func (e *Engine) Execute(
 	}
 
 	return ga.Execute(ctx, runner, info, suggestion.Subjects)
+}
+
+// ExecuteGitHub runs a GitHub API action.
+func (e *Engine) ExecuteGitHub(
+	ctx context.Context,
+	client *github.Client,
+	data *github.RepoData,
+	suggestion ActionSuggestion,
+) (Result, error) {
+	action, ok := e.Actions.Get(suggestion.ActionName)
+	if !ok {
+		return Result{}, fmt.Errorf("engine: action %q not found in registry", suggestion.ActionName)
+	}
+
+	ga, ok := action.(githubActionExecutor)
+	if !ok {
+		return Result{}, fmt.Errorf("engine: action %q does not implement githubActionExecutor (got %T)", suggestion.ActionName, action)
+	}
+
+	return ga.Execute(ctx, client, data, suggestion.Subjects, suggestion.Params)
 }

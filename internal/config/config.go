@@ -32,6 +32,21 @@ type Config struct {
 		RootConfig *RootConfig
 		Rules      *RulesConfig
 	}
+
+	// GitHub controls GitHub API integration (requires GITHUB_TOKEN or GH_TOKEN).
+	GitHub GitHubConfig
+}
+
+// GitHubConfig controls GitHub API integration.
+type GitHubConfig struct {
+	// Enabled controls whether GitHub API checks are attempted.
+	// Default: true.
+	Enabled bool
+
+	// SecurityAlerts controls whether security alert APIs are queried.
+	// When false, security checks are skipped and the Facts tab shows "not queried".
+	// Default: true.
+	SecurityAlerts *bool `mapstructure:"securityAlerts,omitempty"`
 }
 
 // LocalRoot groups repositories found under a single filesystem root.
@@ -55,6 +70,10 @@ type RootConfig struct {
 	// Only the Disable field is used — checks listed here are
 	// removed from the defaults.
 	Rules *RootRulesOverride `mapstructure:",omitempty"`
+
+	// GitHub overrides the global GitHub config for this root.
+	// nil means inherit the global default.
+	GitHub *GitHubConfig `mapstructure:",omitempty"`
 }
 
 // RulesConfig defines which checks and actions are enabled by default.
@@ -191,6 +210,37 @@ func (c *Config) IsActionAuto(name string) bool {
 	}
 
 	return false
+}
+
+// GitHubEnabled reports whether GitHub API checks are enabled for the given root.
+//
+// Per-root override takes precedence over the global default.
+// If no override is set, the global GitHub.Enabled value is used.
+func (c *Config) GitHubEnabled(rootIndex int) bool {
+	if rootIndex >= 0 && rootIndex < len(c.Roots) {
+		if override := c.Roots[rootIndex].RootConfig.GitHub; override != nil {
+			return override.Enabled
+		}
+	}
+
+	return c.GitHub.Enabled
+}
+
+// GitHubSecurityAlerts reports whether security alert APIs should be queried
+// for the given root. Per-root override takes precedence over the global default.
+// Default is true when not explicitly set.
+func (c *Config) GitHubSecurityAlerts(rootIndex int) bool {
+	if rootIndex >= 0 && rootIndex < len(c.Roots) {
+		if override := c.Roots[rootIndex].RootConfig.GitHub; override != nil && override.SecurityAlerts != nil {
+			return *override.SecurityAlerts
+		}
+	}
+
+	if c.GitHub.SecurityAlerts != nil {
+		return *c.GitHub.SecurityAlerts
+	}
+
+	return true // default
 }
 
 // DefaultConfigPath returns the full path to the configuration file
