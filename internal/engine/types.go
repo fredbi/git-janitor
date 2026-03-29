@@ -4,12 +4,12 @@ package engine
 type SubjectKind uint8
 
 const (
-	SubjectNone    SubjectKind = iota // no specific subject (repo-level)
-	SubjectRepo                       // the repository itself
-	SubjectRemote                     // a git remote
-	SubjectBranch                     // a git branch
-	SubjectStash                      // a git stash entry
-	SubjectTag                        // a git tag
+	SubjectNone   SubjectKind = iota // no specific subject (repo-level)
+	SubjectRepo                      // the repository itself
+	SubjectRemote                    // a git remote
+	SubjectBranch                    // a git branch
+	SubjectStash                     // a git stash entry
+	SubjectTag                       // a git tag
 )
 
 // String returns the human-readable name of a SubjectKind.
@@ -37,11 +37,12 @@ func (s SubjectKind) String() string {
 type Severity uint8
 
 const (
-	SeverityNone   Severity = iota // check passed, no alert
-	SeverityInfo                   // informational, no action needed
-	SeverityLow                    // minor housekeeping
-	SeverityMedium                 // should address soon
-	SeverityHigh                   // needs attention now
+	SeverityNone     Severity = iota // check passed, no alert
+	SeverityInfo                     // informational, no action needed
+	SeverityLow                      // minor housekeeping
+	SeverityMedium                   // should address soon
+	SeverityHigh                     // needs attention now
+	SeverityCritical                 // needs manual repair
 )
 
 // String returns the human-readable name of a Severity.

@@ -13,6 +13,8 @@ import (
 // severityBullet returns a colored emoji for the given engine.Severity.
 func severityBullet(s engine.Severity) string {
 	switch s {
+	case engine.SeverityCritical:
+		return "💀"
 	case engine.SeverityHigh:
 		return "🔴"
 	case engine.SeverityMedium:
@@ -26,19 +28,18 @@ func severityBullet(s engine.Severity) string {
 	}
 }
 
-// column widths.
-const (
-	colWidthSeverity = 3
-	colWidthActions  = 5
-	colWidthMinMsg   = 20
-)
+// alertCardLines is the number of display lines per alert card.
+const alertCardLines = 3
 
-// AlertsPanel displays alerts as a hand-rendered borderless table
-// with colored cells, using manual cursor management for scrolling.
+// AlertsPanel displays alerts as multi-line cards.
+// Each card shows:
+//   - Line 1: severity bullet + summary + fix indicator
+//   - Line 2: detail text (dimmed)
+//   - Line 3: separator
 type AlertsPanel struct {
 	Alerts []engine.Alert // real alerts from the engine
 	Cursor int
-	Offset int // scroll offset (first visible row index)
+	Offset int // scroll offset in cards (not lines)
 	Width  int
 	Height int
 }
@@ -78,8 +79,8 @@ func (p *AlertsPanel) SetSize(w, h int) {
 	p.Width = w
 	p.Height = h - 1 // reserve 1 line for header
 
-	if p.Height < 1 {
-		p.Height = 1
+	if p.Height < alertCardLines {
+		p.Height = alertCardLines
 	}
 
 	p.clampScroll()
@@ -106,7 +107,10 @@ func (p *AlertsPanel) Update(msg tea.Msg) tea.Cmd {
 		p.Cursor = 0
 		p.clampScroll()
 	case "end", "G":
-		p.Cursor = max(0, len(p.Alerts)-1)
+		if len(p.Alerts) > 0 {
+			p.Cursor = len(p.Alerts) - 1
+		}
+
 		p.clampScroll()
 	case "enter":
 		// Show suggested actions for the selected alert.
@@ -121,45 +125,31 @@ func (p *AlertsPanel) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (p *AlertsPanel) clampScroll() {
+	visibleCards := p.Height / alertCardLines
+	if visibleCards < 1 {
+		visibleCards = 1
+	}
+
 	if p.Cursor < p.Offset {
 		p.Offset = p.Cursor
 	}
 
-	if p.Cursor >= p.Offset+p.Height {
-		p.Offset = p.Cursor - p.Height + 1
+	if p.Cursor >= p.Offset+visibleCards {
+		p.Offset = p.Cursor - visibleCards + 1
 	}
 }
 
 func (p *AlertsPanel) View() string {
-	msgWidth := p.Width - colWidthSeverity - colWidthActions - 4
-	if msgWidth < colWidthMinMsg {
-		msgWidth = colWidthMinMsg
-	}
-
 	t := types.CurrentTheme
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(t.HeaderText)
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
+	detailStyle := lipgloss.NewStyle().Foreground(t.Dim)
+	selectedBg := lipgloss.NewStyle().Background(t.SelectedBg)
+	sepStyle := lipgloss.NewStyle().Foreground(t.Dim)
 
-	selectedStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(t.Bright).
-		Background(t.SelectedBg)
-
-	detailStyle := lipgloss.NewStyle().
-		Foreground(t.Dim)
-
-	sevCol := lipgloss.NewStyle().Width(colWidthSeverity).Align(lipgloss.Center)
-	msgCol := lipgloss.NewStyle().Width(msgWidth)
-	actCol := lipgloss.NewStyle().Width(colWidthActions).Align(lipgloss.Center)
-
-	header := lipgloss.JoinHorizontal(lipgloss.Top,
-		sevCol.Render(headerStyle.Render(" ")),
-		" ",
-		msgCol.Render(headerStyle.Render("Alert")),
-		" ",
-		actCol.Render(headerStyle.Render("Fix?")),
-	)
+	header := headerStyle.Render(fmt.Sprintf("  Alerts (%d)", len(p.Alerts)))
+	if len(p.Alerts) > 0 {
+		header += "  " + detailStyle.Render("Enter: show actions")
+	}
 
 	if len(p.Alerts) == 0 {
 		empty := detailStyle.Render("  No alerts for this repository")
@@ -167,43 +157,60 @@ func (p *AlertsPanel) View() string {
 		return header + "\n" + empty
 	}
 
+	visibleCards := p.Height / alertCardLines
+	if visibleCards < 1 {
+		visibleCards = 1
+	}
+
+	contentWidth := p.Width - 4 // indent
+	sep := sepStyle.Render(strings.Repeat("─", contentWidth))
+
 	var rows []string
 
-	end := p.Offset + p.Height
+	end := p.Offset + visibleCards
 	if end > len(p.Alerts) {
 		end = len(p.Alerts)
 	}
 
 	for i := p.Offset; i < end; i++ {
 		a := p.Alerts[i]
+		selected := i == p.Cursor
 
-		msgText := a.Summary
-		if a.Detail != "" {
-			msgText += "  " + detailStyle.Render(a.Detail)
-		}
-
-		fixIcon := " "
+		// Line 1: severity + summary + fix indicator
+		fixIcon := ""
 		if len(a.Suggestions) > 0 {
-			fixIcon = fmt.Sprintf("⚡%d", len(a.Suggestions))
+			fixIcon = fmt.Sprintf("  ⚡%d fix", len(a.Suggestions))
 		}
 
-		row := lipgloss.JoinHorizontal(lipgloss.Top,
-			sevCol.Render(severityBullet(a.Severity)),
-			" ",
-			msgCol.Render(msgText),
-			" ",
-			actCol.Render(fixIcon),
-		)
+		line1 := fmt.Sprintf("  %s %s%s", severityBullet(a.Severity), a.Summary, fixIcon)
 
-		if i == p.Cursor {
-			row = selectedStyle.Render(row)
+		// Line 2: detail (truncated to fit)
+		line2 := "  " + detailStyle.Render("(no detail)")
+
+		if a.Detail != "" {
+			detail := a.Detail
+			if len(detail) > contentWidth {
+				detail = detail[:contentWidth-3] + "..."
+			}
+
+			line2 = "  " + detailStyle.Render(detail)
 		}
 
-		rows = append(rows, row)
+		card := line1 + "\n" + line2 + "\n" + sep
+
+		if selected {
+			card = selectedBg.Width(p.Width).Render(line1+"\n"+line2) + "\n" + sep
+		}
+
+		rows = append(rows, card)
 	}
 
-	for len(rows) < p.Height {
+	// Pad remaining space.
+	usedLines := len(rows) * alertCardLines
+
+	for usedLines < p.Height {
 		rows = append(rows, "")
+		usedLines++
 	}
 
 	return header + "\n" + strings.Join(rows, "\n")

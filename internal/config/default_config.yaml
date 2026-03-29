@@ -4,22 +4,50 @@ defaults:
     scheduleInterval: 5m
   rules:
     checks:
+      # Branch hygiene
+      - name: branch-merged-not-deleted
+      - name: branch-gone-upstream
+      - name: branch-lagging
+      - name: branch-no-upstream
+      - name: branch-diverged
+      - name: branch-not-mergeable
+      # Worktree
+      - name: dirty-worktree
+      # Health & maintenance
       - name: health-gc-advised
       - name: size-repack-advised
       - name: health-fsck-errors
-      - name: branch-lagging
-      - name: branch-merged-not-deleted
-      - name: branch-gone-upstream
-      - name: branch-no-upstream
-      - name: branch-diverged
+      # Activity
+      - name: activity-stale
+      # Config audit
+      - name: config-no-email
+      - name: config-unsigned
+      # Tags (tags-local-only intentionally omitted — sensitive, enable per-root)
+      - name: tags-remote-only
+      # File stats
+      - name: filestats-large-files
+      - name: filestats-binary
+      # Traits
+      - name: traits-shallow
+      - name: traits-submodules
+      - name: traits-lfs
     actions:
+      # Branch actions
+      - name: delete-branch
+        auto: false
+      - name: update-branch
+        auto: true
+      - name: rebase-branch
+        auto: false
+      - name: push-branch
+        auto: false
+      # Maintenance
       - name: run-gc
         auto: true
       - name: run-gc-aggressive
         auto: false
-      - name: update-branch
+      # Tags
+      - name: push-tag
+        auto: false
+      - name: fetch-tags
         auto: true
-      - name: delete-branch
-        auto: false
-      - name: rebase-branch
-        auto: false

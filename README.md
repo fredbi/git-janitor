@@ -2,6 +2,8 @@
 
 A janitor for my git repos.
 
+![Mascot](docs/images/git-janitor.png)
+
 ## Features
 
 ### Monitoring local clones

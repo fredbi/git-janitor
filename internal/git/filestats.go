@@ -8,8 +8,9 @@ import (
 	"strings"
 )
 
-// emptyTreeHash is the well-known SHA-1 of an empty tree in git.
-const emptyTreeHash = "4b825dc642cb6eb9a060e54bf899d69f82cf7137"
+// emptyTreeHashFallback is the well-known SHA-1 of an empty tree in git.
+// Used only if the dynamic lookup fails.
+const emptyTreeHashFallback = "4b825dc642cb6eb9a060e54bf899d69f82cf7137"
 
 // FileStats holds information about large and binary files in the repository.
 type FileStats struct {
@@ -214,11 +215,27 @@ func (r *Runner) findLargeBlobs(ctx context.Context, topN int) []BlobEntry {
 	return blobs
 }
 
+// emptyTreeHash returns the empty tree hash for the current git installation.
+// It runs `git hash-object -t tree /dev/null` and falls back to the well-known SHA-1.
+func (r *Runner) emptyTreeHash(ctx context.Context) string {
+	out, err := r.run(ctx, "hash-object", "-t", "tree", "/dev/null")
+	if err != nil {
+		return emptyTreeHashFallback
+	}
+
+	h := strings.TrimSpace(out)
+	if h == "" {
+		return emptyTreeHashFallback
+	}
+
+	return h
+}
+
 // findBinaryFiles lists files in HEAD that git considers binary.
 // Uses: git diff --numstat <empty-tree> HEAD
 // Binary files show as "-\t-\tpath".
 func (r *Runner) findBinaryFiles(ctx context.Context) []string {
-	out, err := r.run(ctx, cmdDiffNumstat(emptyTreeHash)...)
+	out, err := r.run(ctx, cmdDiffNumstat(r.emptyTreeHash(ctx))...)
 	if err != nil {
 		return nil
 	}

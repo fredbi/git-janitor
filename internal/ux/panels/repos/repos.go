@@ -447,6 +447,15 @@ func (p *Panel) View(focused bool) string {
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, header, filterRow, content)
 
+	// Truncate to fit the border box.
+	maxInnerLines := p.Height - 2
+	if maxInnerLines > 0 {
+		lines := strings.Split(inner, "\n")
+		if len(lines) > maxInnerLines {
+			inner = strings.Join(lines[:maxInnerLines], "\n")
+		}
+	}
+
 	// --- Border ---
 	borderColor := t.Dim
 	if focused {

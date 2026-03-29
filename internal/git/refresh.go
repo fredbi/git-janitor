@@ -3,12 +3,15 @@ package git
 import "context"
 
 // RefreshRepo runs git fetch --all --tags then collects full repo info.
+// If the fetch fails (e.g. remote unavailable), local data is still collected
+// and the fetch error is recorded in FetchErr.
 func RefreshRepo(ctx context.Context, path string) RepoInfo {
 	r := NewRunner(path)
 
-	if err := r.FetchAllTags(ctx); err != nil {
-		return RepoInfo{Path: path, IsGit: true, Err: err}
-	}
+	fetchErr := r.FetchAllTags(ctx)
 
-	return CollectRepoInfo(ctx, r, path)
+	info := CollectRepoInfo(ctx, r, path)
+	info.FetchErr = fetchErr
+
+	return info
 }

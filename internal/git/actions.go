@@ -150,6 +150,69 @@ func (r *Runner) MergeInto(ctx context.Context, source string) ActionResult {
 	return ActionResult{OK: true, Message: fmt.Sprintf("merged %s into current branch", source)}
 }
 
+// RenameRemote renames a git remote.
+func (r *Runner) RenameRemote(ctx context.Context, oldName, newName string) ActionResult {
+	_, err := r.run(ctx, cmdRenameRemote(oldName, newName)...)
+	if err != nil {
+		return ActionResult{Message: fmt.Sprintf("rename remote %s→%s failed: %v", oldName, newName, err)}
+	}
+
+	return ActionResult{OK: true, Message: fmt.Sprintf("renamed remote %s to %s", oldName, newName)}
+}
+
+// DeleteBranch deletes a local branch using git branch -D (force delete).
+//
+// Force delete is used because squash-merged branches are not recognized
+// by the safe -d flag. The caller should verify the branch is merged
+// before calling this.
+//
+// Refuses to delete the current branch.
+func (r *Runner) DeleteBranch(ctx context.Context, name string) ActionResult {
+	// Guard: refuse to delete the current branch.
+	current, err := r.run(ctx, cmdRevParseAbbrev("HEAD")...)
+	if err == nil && strings.TrimSpace(current) == name {
+		return ActionResult{Message: fmt.Sprintf("cannot delete current branch %s", name)}
+	}
+
+	_, err = r.run(ctx, cmdDeleteBranch(name)...)
+	if err != nil {
+		return ActionResult{Message: fmt.Sprintf("delete branch %s failed: %v", name, err)}
+	}
+
+	return ActionResult{OK: true, Message: fmt.Sprintf("deleted branch %s", name)}
+}
+
+// PushBranch pushes a local branch to the given remote and sets upstream tracking.
+func (r *Runner) PushBranch(ctx context.Context, remote, name string) ActionResult {
+	_, err := r.run(ctx, cmdPushBranchUpstream(remote, name)...)
+	if err != nil {
+		return ActionResult{Message: fmt.Sprintf("push branch %s to %s failed: %v", name, remote, err)}
+	}
+
+	return ActionResult{OK: true, Message: fmt.Sprintf("pushed %s to %s with upstream tracking", name, remote)}
+}
+
+// DefaultPushRemote returns the remote to push to for the given repo.
+// For forks (upstream exists): push to upstream.
+// For clones (origin only): push to origin.
+func DefaultPushRemote(remotes []Remote) string {
+	if FindRemote(remotes, RemoteUpstream) != nil {
+		return RemoteUpstream
+	}
+
+	return RemoteOrigin
+}
+
+// PushTag pushes a single tag to the origin remote.
+func (r *Runner) PushTag(ctx context.Context, name string) ActionResult {
+	_, err := r.run(ctx, cmdPushTag("origin", name)...)
+	if err != nil {
+		return ActionResult{Message: fmt.Sprintf("push tag %s failed: %v", name, err)}
+	}
+
+	return ActionResult{OK: true, Message: fmt.Sprintf("pushed tag %s to origin", name)}
+}
+
 // Compact runs git gc to reclaim space and optimize the repository.
 //
 // This is the standard garbage collection pass: repacks objects, prunes

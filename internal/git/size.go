@@ -27,11 +27,15 @@ type RepoSize struct {
 
 const (
 	// repackPacksThreshold triggers repack advice when too many pack files exist.
-	repackPacksThreshold = 5
+	repackPacksThreshold = 20
 
 	// repackLooseRatioThreshold triggers repack advice when loose object size
 	// exceeds this fraction of the total packed size.
 	repackLooseRatioThreshold = 0.2
+
+	// repackMinPackSizeKB is the minimum packed size required for the
+	// loose/packed ratio check to apply. Below this, the ratio is meaningless.
+	repackMinPackSizeKB = 1024 // 1 MB
 
 	// repackGitDirThreshold triggers repack advice when .git exceeds this size.
 	repackGitDirBytes = 500 * 1024 * 1024 // 500 MB
@@ -40,6 +44,15 @@ const (
 	// significantly larger than the reachable objects (bloat from old packs,
 	// reflogs, etc.).
 	repackWasteRatio = 2.0
+
+	// repackMinGitDirBytes is the minimum .git size for the waste ratio
+	// check to apply. Below this, structural overhead (hooks, logs, refs,
+	// pack indexes) dominates and creates misleading ratios.
+	repackMinGitDirBytes = 5 * 1024 * 1024 // 5 MB
+
+	// repackMinWasteBytes is the minimum absolute waste (gitDir - reachable)
+	// required to trigger the bloat advisory.
+	repackMinWasteBytes = 1024 * 1024 // 1 MB
 )
 
 // Size collects repository size metrics.
@@ -147,7 +160,9 @@ func (r *Runner) evaluateRepackAdvice(ctx context.Context, s *RepoSize) {
 	}
 
 	// Loose objects are a significant fraction of packed size.
-	if packSizeKB > 0 && float64(looseSizeKB)/float64(packSizeKB) > repackLooseRatioThreshold {
+	// Only meaningful when packed size is substantial (> 1 MB).
+	if packSizeKB >= repackMinPackSizeKB &&
+		float64(looseSizeKB)/float64(packSizeKB) > repackLooseRatioThreshold {
 		s.RepackAdvised = true
 		s.RepackReasons = append(s.RepackReasons,
 			fmt.Sprintf("loose objects (%d KB) are >%.0f%% of packed size (%d KB)",
@@ -162,7 +177,12 @@ func (r *Runner) evaluateRepackAdvice(ctx context.Context, s *RepoSize) {
 	}
 
 	// .git directory is much larger than reachable objects (bloat).
-	if s.ReachableBytes > 0 && float64(s.GitDirBytes)/float64(s.ReachableBytes) > repackWasteRatio {
+	// Skip for small repos (< 5 MB .git) where structural overhead dominates.
+	// Skip if absolute waste is below 1 MB.
+	waste := s.GitDirBytes - s.ReachableBytes
+	if s.GitDirBytes > repackMinGitDirBytes &&
+		s.ReachableBytes > 0 && waste > repackMinWasteBytes &&
+		float64(s.GitDirBytes)/float64(s.ReachableBytes) > repackWasteRatio {
 		s.RepackAdvised = true
 		s.RepackReasons = append(s.RepackReasons,
 			fmt.Sprintf(".git (%s) is %.1fx larger than reachable objects (%s)",

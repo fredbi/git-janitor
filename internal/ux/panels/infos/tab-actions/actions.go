@@ -15,20 +15,26 @@ import (
 const cardLines = 4
 
 // ActionsListPanel displays suggested actions for the currently selected alert.
-// Each suggestion is rendered as a multi-line card showing:
-//   - action name + destructive indicator
-//   - description from the action registry
-//   - repo path (short)
-//   - affected subjects
 type ActionsListPanel struct {
 	RepoPath    string
 	Alert       *engine.Alert
 	Suggestions []engine.ActionSuggestion
-	Actions     *engine.ActionRegistry // for descriptions and destructive flags
+	Actions     *engine.ActionRegistry
 	Cursor      int
-	Offset      int // scroll offset in cards (not lines)
+	Offset      int
 	Width       int
 	Height      int
+
+	// Picker state (non-nil when Ctrl+P is active).
+	Picker *SubjectPicker
+}
+
+// SubjectPicker is an overlay for selecting individual subjects.
+type SubjectPicker struct {
+	Suggestion engine.ActionSuggestion
+	Checked    []bool // one per subject
+	Cursor     int
+	Offset     int
 }
 
 // New creates an empty ActionsListPanel.
@@ -39,6 +45,7 @@ func New() ActionsListPanel {
 // SetAlert sets the alert whose suggestions are displayed.
 func (p *ActionsListPanel) SetAlert(repoPath string, alert *engine.Alert) {
 	p.RepoPath = repoPath
+	p.Picker = nil
 
 	if alert == nil || len(alert.Suggestions) == 0 {
 		p.Alert = nil
@@ -59,13 +66,14 @@ func (p *ActionsListPanel) SetAlert(repoPath string, alert *engine.Alert) {
 func (p *ActionsListPanel) Clear() {
 	p.Alert = nil
 	p.Suggestions = nil
+	p.Picker = nil
 	p.Cursor = 0
 	p.Offset = 0
 }
 
 func (p *ActionsListPanel) SetSize(w, h int) {
 	p.Width = w
-	p.Height = h - 2 // reserve header + hint
+	p.Height = h - 2
 
 	if p.Height < cardLines {
 		p.Height = cardLines
@@ -76,6 +84,11 @@ func (p *ActionsListPanel) Update(msg tea.Msg) tea.Cmd {
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return nil
+	}
+
+	// When the picker is active, it captures all keys.
+	if p.Picker != nil {
+		return p.updatePicker(km)
 	}
 
 	if len(p.Suggestions) == 0 {
@@ -94,6 +107,7 @@ func (p *ActionsListPanel) Update(msg tea.Msg) tea.Cmd {
 			p.clampScroll()
 		}
 	case "enter":
+		// Execute on ALL subjects.
 		if p.Cursor >= 0 && p.Cursor < len(p.Suggestions) {
 			sug := p.Suggestions[p.Cursor]
 
@@ -104,6 +118,82 @@ func (p *ActionsListPanel) Update(msg tea.Msg) tea.Cmd {
 					Subjects:   sug.Subjects,
 				}
 			}
+		}
+	case "ctrl+p":
+		// Open subject picker for multi-subject suggestions.
+		if p.Cursor >= 0 && p.Cursor < len(p.Suggestions) {
+			sug := p.Suggestions[p.Cursor]
+			if len(sug.Subjects) > 1 {
+				checked := make([]bool, len(sug.Subjects))
+				for i := range checked {
+					checked[i] = true // all pre-checked
+				}
+
+				p.Picker = &SubjectPicker{
+					Suggestion: sug,
+					Checked:    checked,
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (p *ActionsListPanel) updatePicker(km tea.KeyMsg) tea.Cmd {
+	pk := p.Picker
+	n := len(pk.Suggestion.Subjects)
+
+	switch km.String() {
+	case "up", "k":
+		if pk.Cursor > 0 {
+			pk.Cursor--
+			p.clampPickerScroll()
+		}
+	case "down", "j":
+		if pk.Cursor < n-1 {
+			pk.Cursor++
+			p.clampPickerScroll()
+		}
+	case " ", "space":
+		// Toggle checkbox.
+		if pk.Cursor >= 0 && pk.Cursor < n {
+			pk.Checked[pk.Cursor] = !pk.Checked[pk.Cursor]
+		}
+	case "enter":
+		// Execute with selected subjects only.
+		var selected []string
+
+		for i, name := range pk.Suggestion.Subjects {
+			if pk.Checked[i] {
+				selected = append(selected, name)
+			}
+		}
+
+		p.Picker = nil
+
+		if len(selected) == 0 {
+			return nil // nothing selected, do nothing
+		}
+
+		return func() tea.Msg {
+			return types.ExecuteActionMsg{
+				RepoPath:   p.RepoPath,
+				ActionName: pk.Suggestion.ActionName,
+				Subjects:   selected,
+			}
+		}
+	case "esc":
+		p.Picker = nil
+	case "a":
+		// Select all.
+		for i := range pk.Checked {
+			pk.Checked[i] = true
+		}
+	case "n":
+		// Select none.
+		for i := range pk.Checked {
+			pk.Checked[i] = false
 		}
 	}
 
@@ -125,7 +215,91 @@ func (p *ActionsListPanel) clampScroll() {
 	}
 }
 
+func (p *ActionsListPanel) clampPickerScroll() {
+	pk := p.Picker
+	visibleRows := p.Height - 3 // header + hint + separator
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	if pk.Cursor < pk.Offset {
+		pk.Offset = pk.Cursor
+	}
+
+	if pk.Cursor >= pk.Offset+visibleRows {
+		pk.Offset = pk.Cursor - visibleRows + 1
+	}
+}
+
 func (p *ActionsListPanel) View() string {
+	// If picker is active, render it instead of the card list.
+	if p.Picker != nil {
+		return p.viewPicker()
+	}
+
+	return p.viewCards()
+}
+
+func (p *ActionsListPanel) viewPicker() string {
+	pk := p.Picker
+	t := types.CurrentTheme
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
+	detailStyle := lipgloss.NewStyle().Foreground(t.Dim)
+	selectedBg := lipgloss.NewStyle().Bold(true).Foreground(t.Bright).Background(t.SelectedBg)
+	accentStyle := lipgloss.NewStyle().Foreground(t.ActionsAccent)
+
+	// Count selected.
+	selectedCount := 0
+
+	for _, c := range pk.Checked {
+		if c {
+			selectedCount++
+		}
+	}
+
+	header := headerStyle.Render(fmt.Sprintf("  Pick %ss for: %s",
+		pk.Suggestion.SubjectKind, accentStyle.Render(pk.Suggestion.ActionName)))
+	countLine := detailStyle.Render(fmt.Sprintf("  %d/%d selected", selectedCount, len(pk.Suggestion.Subjects)))
+
+	visibleRows := p.Height - 3
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
+	end := pk.Offset + visibleRows
+	if end > len(pk.Suggestion.Subjects) {
+		end = len(pk.Suggestion.Subjects)
+	}
+
+	var rows []string
+
+	for i := pk.Offset; i < end; i++ {
+		name := pk.Suggestion.Subjects[i]
+
+		checkbox := "  ☐ "
+		if pk.Checked[i] {
+			checkbox = "  ☑ "
+		}
+
+		row := checkbox + name
+
+		if i == pk.Cursor {
+			row = selectedBg.Render(row)
+		}
+
+		rows = append(rows, row)
+	}
+
+	for len(rows) < visibleRows {
+		rows = append(rows, "")
+	}
+
+	hint := detailStyle.Render("  Space: toggle  |  a: all  n: none  |  Enter: execute  |  Esc: cancel")
+
+	return header + "\n" + countLine + "\n" + strings.Join(rows, "\n") + "\n" + hint
+}
+
+func (p *ActionsListPanel) viewCards() string {
 	t := types.CurrentTheme
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
 	detailStyle := lipgloss.NewStyle().Foreground(t.Dim)
@@ -159,7 +333,7 @@ func (p *ActionsListPanel) View() string {
 		end = len(p.Suggestions)
 	}
 
-	contentWidth := p.Width - 4 // indent
+	contentWidth := p.Width - 4
 
 	for i := p.Offset; i < end; i++ {
 		sug := p.Suggestions[i]
@@ -207,7 +381,6 @@ func (p *ActionsListPanel) View() string {
 
 		line4 := detailStyle.Render("→ " + subjects)
 
-		// Compose the card.
 		card := fmt.Sprintf("  %s\n  %s\n  %s\n  %s",
 			nameStr, descStr, line3, line4)
 
@@ -218,14 +391,21 @@ func (p *ActionsListPanel) View() string {
 		rows = append(rows, card)
 	}
 
-	// Pad remaining space.
 	usedLines := len(rows) * cardLines
 	for usedLines < p.Height {
 		rows = append(rows, "")
 		usedLines++
 	}
 
-	hint := detailStyle.Render("  Enter: execute  |  ↑↓: navigate")
+	// Adapt hint based on whether the selected suggestion has multiple subjects.
+	hint := "  Enter: execute  |  ↑↓: navigate"
+
+	if p.Cursor >= 0 && p.Cursor < len(p.Suggestions) && len(p.Suggestions[p.Cursor].Subjects) > 1 {
+		kind := p.Suggestions[p.Cursor].SubjectKind.String() + "s"
+		hint = fmt.Sprintf("  Enter: execute all %s  |  Ctrl+P: pick %s  |  ↑↓: navigate", kind, kind)
+	}
+
+	hint = detailStyle.Render(hint)
 
 	return header + "\n" + strings.Join(rows, "\n") + "\n" + hint
 }

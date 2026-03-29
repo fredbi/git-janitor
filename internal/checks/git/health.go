@@ -80,7 +80,7 @@ func (c CheckHealthFSCK) Evaluate(info *git.RepoInfo) (iter.Seq[engine.Alert], e
 
 	return singleAlert(engine.Alert{
 		CheckName: c.Name(),
-		Severity:  engine.SeverityHigh,
+		Severity:  engine.SeverityCritical,
 		Summary:   "repository integrity issues detected",
 		Detail:    strings.Join(info.Health.FSCKErrors, "\n"),
 	}), nil

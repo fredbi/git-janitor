@@ -17,7 +17,7 @@ func cmdStatus() []string {
 func cmdBranchList() []string {
 	return []string{
 		"branch", "-a",
-		"--format=%(HEAD)|%(refname:short)|%(objectname:short)|%(upstream:short)|%(upstream:track)|%(creatordate:iso-strict)",
+		"--format=%(HEAD)|%(refname:short)|%(objectname:short)|%(upstream:short)|%(upstream:track)|%(creatordate:iso-strict)|%(refname)",
 	}
 }
 
@@ -52,7 +52,7 @@ func cmdFetchAll() []string {
 }
 
 func cmdFetchAllTags() []string {
-	return []string{"fetch", "--all", "--tags"}
+	return []string{"fetch", "--all", "--tags", "--force"}
 }
 
 func cmdFetchRemote(remote string) []string {
@@ -138,6 +138,22 @@ func cmdMergeAbort() []string {
 
 func cmdPushForceWithLease(remote, branch string) []string {
 	return []string{"push", "--force-with-lease", remote, branch}
+}
+
+func cmdRenameRemote(oldName, newName string) []string {
+	return []string{"remote", "rename", oldName, newName}
+}
+
+func cmdDeleteBranch(name string) []string {
+	return []string{"branch", "-D", name}
+}
+
+func cmdPushBranchUpstream(remote, branch string) []string {
+	return []string{"push", "-u", remote, branch}
+}
+
+func cmdPushTag(remote, tag string) []string {
+	return []string{"push", remote, tag}
 }
 
 func cmdGC() []string {

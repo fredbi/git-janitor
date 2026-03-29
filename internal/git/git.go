@@ -40,6 +40,10 @@ func (r *Runner) run(ctx context.Context, args ...string) (string, error) {
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.Dir
+	cmd.Env = append(cmd.Environ(),
+		"LC_ALL=C",              // force English output for parsing
+		"GIT_TERMINAL_PROMPT=0", // never prompt for credentials (fail fast instead of hanging)
+	)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -69,6 +73,10 @@ func (r *Runner) runWithStdin(ctx context.Context, stdin string, args ...string)
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = r.Dir
+	cmd.Env = append(cmd.Environ(),
+		"LC_ALL=C",
+		"GIT_TERMINAL_PROMPT=0",
+	)
 	cmd.Stdin = strings.NewReader(stdin)
 
 	var stdout, stderr bytes.Buffer

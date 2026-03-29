@@ -28,6 +28,9 @@ type RepoInfo struct {
 	LastSemverDate time.Time // date of LastSemverTag
 	Activity      *Activity
 	Err           error
+	// FetchErr records a fetch failure (e.g. remote unavailable).
+	// Non-nil when the remote could not be reached, but local data is still valid.
+	FetchErr      error
 }
 
 // IsRepoInfo is a marker method satisfying the engine.RepoInfo interface.

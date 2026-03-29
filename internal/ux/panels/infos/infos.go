@@ -2,6 +2,7 @@ package infos
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -241,6 +242,13 @@ func (p *Panel) View(focused bool) string {
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, header, content)
 
+	// Truncate inner content to fit the border box.
+	// Border uses 2 lines (top + bottom), header uses 1 line.
+	maxInnerLines := p.Height - 2
+	if maxInnerLines > 0 {
+		inner = truncateLines(inner, maxInnerLines)
+	}
+
 	// --- Border ---
 	borderColor := t.Dim
 	if focused {
@@ -254,4 +262,14 @@ func (p *Panel) View(focused bool) string {
 		Height(p.Height - 2)
 
 	return border.Render(inner)
+}
+
+// truncateLines keeps at most maxLines lines from s.
+func truncateLines(s string, maxLines int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= maxLines {
+		return s
+	}
+
+	return strings.Join(lines[:maxLines], "\n")
 }

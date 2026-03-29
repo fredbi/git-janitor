@@ -52,8 +52,9 @@ type Model struct {
 	Width         int
 	Height        int
 	Quitting      bool
-	SelectedRepo  string // path of the currently selected repo (to detect changes)
-	SelectedRoot  int    // index of the root containing the selected repo
+	SelectedRepo  string        // path of the currently selected repo (to detect changes)
+	SelectedRoot  int           // index of the root containing the selected repo
+	LastRepoInfo  *git.RepoInfo // most recent RepoInfo for the selected repo
 
 	// PendingAction holds an action awaiting user confirmation (Y/N).
 	// nil when no confirmation is pending.
@@ -235,6 +236,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if !repo.IsGit {
+			m.Status.SetMessage("Not a git repository — nothing to refresh.")
+
+			return m, nil
+		}
+
 		progressCmd := m.Status.StartProgress("Fetching " + repo.Name + "...")
 
 		return m, tea.Batch(progressCmd, refreshRepo(repo.Path))
@@ -246,7 +253,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Repos.CycleTab()
 			m.Status.SetMessage("Root: " + m.Repos.ActiveTabName())
 
-			return m, m.checkSelectedRepo()
+			return m, m.forceRepoCheck()
 		case paneRight:
 			m.Right.CycleTab()
 			m.Status.SetMessage("Tab: " + m.Right.ActiveTabName())
@@ -264,12 +271,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		m.cycleFocus(1)
 
-		return m, m.applyFocus()
+		return m, tea.Batch(m.applyFocus(), m.checkSelectedRepo())
 
 	case "shift+tab":
 		m.cycleFocus(-1)
 
-		return m, m.applyFocus()
+		return m, tea.Batch(m.applyFocus(), m.checkSelectedRepo())
 	}
 
 	// When the input Pane is focused, most keys go to the text input.
@@ -297,7 +304,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Repos.CycleTab()
 			m.Status.SetMessage("Root: " + m.Repos.ActiveTabName())
 
-			return m, m.checkSelectedRepo()
+			return m, m.forceRepoCheck()
 		case paneRight:
 			m.Right.CycleTab()
 			m.Status.SetMessage("Tab: " + m.Right.ActiveTabName())
@@ -311,7 +318,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Repos.CycleTabBack()
 			m.Status.SetMessage("Root: " + m.Repos.ActiveTabName())
 
-			return m, m.checkSelectedRepo()
+			return m, m.forceRepoCheck()
 		case paneRight:
 			m.Right.CycleTabBack()
 			m.Status.SetMessage("Tab: " + m.Right.ActiveTabName())
@@ -582,24 +589,28 @@ func (m *Model) handleRepoInfo(msg uxtypes.RepoInfoMsg) (tea.Model, tea.Cmd) {
 	}
 
 	ti := &msg.Info
+	m.LastRepoInfo = ti
 	m.Right.SetRepoInfo(ti, m.Cfg.EnabledChecks(m.SelectedRoot))
 
 	return m, nil
 }
 
 // handleRepoRefresh processes the result of a fetch + re-inspect.
+// If the fetch failed (remote unavailable), local data is still displayed.
 func (m *Model) handleRepoRefresh(msg uxtypes.RepoRefreshMsg) (tea.Model, tea.Cmd) {
 	if msg.Info.Path != m.SelectedRepo {
 		return m, nil
 	}
 
-	if msg.Info.Err != nil {
-		m.Status.SetMessage("Fetch error: " + msg.Info.Err.Error())
+	if msg.Info.FetchErr != nil {
+		m.Status.SetMessage("Remote unavailable — showing local data")
 	} else {
 		m.Status.SetMessage("Fetched " + msg.Info.Path)
 	}
 
+	// Always update panels with local data, even if fetch failed.
 	ti := &msg.Info
+	m.LastRepoInfo = ti
 	m.Right.SetRepoInfo(ti, m.Cfg.EnabledChecks(m.SelectedRoot))
 
 	return m, nil
@@ -647,11 +658,12 @@ func (m *Model) runAction(msg uxtypes.ExecuteActionMsg) tea.Cmd {
 	actionName := msg.ActionName
 	subjects := msg.Subjects
 	eng := m.Engine
+	info := m.LastRepoInfo
 
 	return func() tea.Msg {
 		r := git.NewRunner(repoPath)
 		result, err := eng.Execute(
-			context.Background(), r, nil,
+			context.Background(), r, info,
 			engine.ActionSuggestion{
 				ActionName: actionName,
 				Subjects:   subjects,
@@ -713,19 +725,67 @@ func (m *Model) handleActionResult(msg uxtypes.ActionResultMsg) (tea.Model, tea.
 	return m, nil
 }
 
-// checkSelectedRepo detects when the selected repo changes and triggers a fetch.
-func (m *Model) checkSelectedRepo() tea.Cmd {
+// forceRepoCheck unconditionally fetches info for the selected repo.
+// Used when cycling root tabs — always refreshes even if the repo path
+// matches (handles single-repo roots revisited after navigating away).
+func (m *Model) forceRepoCheck() tea.Cmd {
+	m.SelectedRoot = m.Repos.Active
+
 	repo, ok := m.Repos.SelectedRepo()
 	if !ok {
-		return nil
-	}
+		m.SelectedRepo = ""
+		m.LastRepoInfo = nil
 
-	if repo.Path == m.SelectedRepo {
 		return nil
 	}
 
 	m.SelectedRepo = repo.Path
-	m.SelectedRoot = m.Repos.Active
+
+	m.Status.SetMessage("Loading " + repo.Name + "...")
+
+	// For non-git repos, update panels immediately (no async fetch needed).
+	if !repo.IsGit {
+		info := git.RepoInfo{
+			Path:  repo.Path,
+			IsGit: false,
+			SCM:   git.SCMNone,
+			Kind:  git.KindNotGit,
+		}
+
+		m.LastRepoInfo = &info
+		m.Right.SetRepoInfo(&info, nil)
+
+		return nil
+	}
+
+	return fetchRepoInfo(repo.Path, true)
+}
+
+// checkSelectedRepo detects when the selected repo or root changes and triggers a fetch.
+func (m *Model) checkSelectedRepo() tea.Cmd {
+	currentRoot := m.Repos.Active
+
+	repo, ok := m.Repos.SelectedRepo()
+	if !ok {
+		// Root changed but no repo selected (empty tab) — clear panels.
+		if currentRoot != m.SelectedRoot {
+			m.SelectedRoot = currentRoot
+			m.SelectedRepo = ""
+			m.LastRepoInfo = nil
+		}
+
+		return nil
+	}
+
+	repoChanged := repo.Path != m.SelectedRepo
+	rootChanged := currentRoot != m.SelectedRoot
+
+	if !repoChanged && !rootChanged {
+		return nil
+	}
+
+	m.SelectedRepo = repo.Path
+	m.SelectedRoot = currentRoot
 
 	return fetchRepoInfo(repo.Path, repo.IsGit)
 }
@@ -787,9 +847,12 @@ func fetchRepoInfo(path string, isGit bool) tea.Cmd {
 			}}
 		}
 
+		// Use the fast path for navigation — skips expensive operations
+		// (fsck, file stats, health, merge/rebase checks).
+		// Full inspection runs on Ctrl+R (refreshRepo).
 		ctx := context.Background()
 		r := git.NewRunner(path)
-		info := git.CollectRepoInfo(ctx, r, path)
+		info := git.CollectRepoInfoFast(ctx, r, path)
 
 		return uxtypes.RepoInfoMsg{Info: info}
 	}

@@ -121,7 +121,7 @@ func parseBranches(output string) []Branch {
 			continue
 		}
 
-		parts := strings.SplitN(line, "|", 6)
+		parts := strings.SplitN(line, "|", 7)
 		if len(parts) < 4 {
 			continue
 		}
@@ -144,12 +144,26 @@ func parseBranches(output string) []Branch {
 			lastCommit, _ = time.Parse(time.RFC3339, strings.TrimSpace(parts[5])) //nolint:errcheck // best-effort
 		}
 
+		// Use the full refname (field 7) to reliably detect remote branches.
+		// refs/remotes/... = remote, refs/heads/... = local.
+		var fullRef string
+
+		if len(parts) >= 7 {
+			fullRef = strings.TrimSpace(parts[6])
+		}
+
 		// Skip HEAD pointer entries like "origin/HEAD -> origin/main".
 		if strings.Contains(name, "/HEAD") {
 			continue
 		}
 
-		isRemote := strings.Contains(name, "/")
+		// Skip bare remote ref roots (e.g. refs/remotes/origin with short name "origin").
+		// These are not actual branches.
+		if strings.HasPrefix(fullRef, "refs/remotes/") && !strings.Contains(strings.TrimPrefix(fullRef, "refs/remotes/"), "/") {
+			continue
+		}
+
+		isRemote := strings.HasPrefix(fullRef, "refs/remotes/")
 
 		b := Branch{
 			Name:       name,

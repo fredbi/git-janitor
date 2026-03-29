@@ -113,6 +113,13 @@ func (p *FactsPanel) buildLines() []string {
 	line("Kind:", info.Kind)
 	line("SCM:", info.SCM)
 
+	// Remote status (shown when fetch failed).
+	if info.FetchErr != nil {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			labelStyle.Render("Remote:"),
+			warnStyle.Render("unavailable — "+info.FetchErr.Error())))
+	}
+
 	// Non-git directory: show minimal info.
 	if !info.IsGit {
 		return lines

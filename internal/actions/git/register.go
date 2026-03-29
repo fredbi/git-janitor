@@ -19,4 +19,53 @@ func RegisterAll(r *engine.ActionRegistry) {
 			CheckDescription: "run git gc --aggressive for deeper optimization with high compression",
 		},
 	}})
+
+	r.Register(ActionDeleteBranch{GitAction: engine.GitAction{
+		Describer: engine.Describer{
+			CheckName:        "delete-branch",
+			CheckDescription: "delete a local branch (force delete, for squash-merged branches)",
+		},
+	}})
+
+	r.Register(ActionUpdateBranch{GitAction: engine.GitAction{
+		Describer: engine.Describer{
+			CheckName:        "update-branch",
+			CheckDescription: "fast-forward a local branch from its upstream",
+		},
+	}})
+
+	r.Register(ActionRebaseBranch{GitAction: engine.GitAction{
+		Describer: engine.Describer{
+			CheckName:        "rebase-branch",
+			CheckDescription: "rebase a local branch onto the default branch",
+		},
+	}})
+
+	r.Register(ActionPushBranch{GitAction: engine.GitAction{
+		Describer: engine.Describer{
+			CheckName:        "push-branch",
+			CheckDescription: "push a local branch to origin and set upstream tracking",
+		},
+	}})
+
+	r.Register(ActionPushTag{GitAction: engine.GitAction{
+		Describer: engine.Describer{
+			CheckName:        "push-tag",
+			CheckDescription: "push a local tag to the origin remote",
+		},
+	}})
+
+	r.Register(ActionRenameRemote{GitAction: engine.GitAction{
+		Describer: engine.Describer{
+			CheckName:        "rename-remote",
+			CheckDescription: "rename a git remote (e.g. fix misspelled upstream)",
+		},
+	}})
+
+	r.Register(ActionFetchTags{GitAction: engine.GitAction{
+		Describer: engine.Describer{
+			CheckName:        "fetch-tags",
+			CheckDescription: "fetch all tags from all remotes",
+		},
+	}})
 }

@@ -22,10 +22,70 @@ const (
 	KindNotGit = "not-git"
 )
 
+// Well-known remote names.
+// For phases 1-3, we only consider these two remotes.
+// Phase 4+ may make these configurable.
+const (
+	RemoteOrigin   = "origin"
+	RemoteUpstream = "upstream"
+)
+
 var (
 	githubHostRe = regexp.MustCompile(`github\.(\w+)`) //nolint:gochecknoglobals
 	gitlabHostRe = regexp.MustCompile(`gitlab\.(\w+)`) //nolint:gochecknoglobals
 )
+
+// CollectRepoInfoFast gathers the essentials for displaying repo facts:
+// status, branches, remotes, stashes, default branch, traits, config,
+// and last commit. Skips expensive operations (fsck, file stats, health,
+// merge/rebase checks, activity) that can take 10+ seconds on large repos.
+//
+// Use [CollectRepoInfo] for a full deep inspection (Ctrl+R refresh).
+func CollectRepoInfoFast(ctx context.Context, r *Runner, path string) RepoInfo {
+	info := RepoInfo{Path: path, IsGit: true}
+
+	var err error
+
+	info.Status, err = r.Status(ctx)
+	if err != nil {
+		info.Err = err
+
+		return info
+	}
+
+	info.Branches, err = r.Branches(ctx)
+	if err != nil {
+		info.Err = err
+
+		return info
+	}
+
+	info.Remotes, err = r.Remotes(ctx)
+	if err != nil {
+		info.Err = err
+
+		return info
+	}
+
+	info.Stashes, _ = r.Stashes(ctx)            // non-fatal
+	info.DefaultBranch, _ = r.DefaultBranch(ctx) // non-fatal
+	info.LastCommit, _ = r.LastCommitTime(ctx)   // non-fatal
+	info.Worktrees, _ = r.Worktrees(ctx)         // non-fatal
+
+	// Lightweight traits (filesystem checks, no git commands).
+	info.HasSubmodules = r.HasSubmodules()
+	info.HasLFS = r.HasLFS()
+
+	// Curated git config (single git command).
+	cfg := r.Config(ctx)
+	info.Config = &cfg
+
+	// Derive SCM and kind from remotes.
+	info.SCM = DeriveSCM(info.Remotes)
+	info.Kind = DeriveKind(info.Remotes)
+
+	return info
+}
 
 // CollectRepoInfo gathers status, branches, remotes, stashes and default branch,
 // then derives SCM, kind, and last commit time.
@@ -134,45 +194,86 @@ func DeriveSCM(remotes []Remote) string {
 
 // DeriveKind determines whether the repo is a clone or a fork.
 //
-//   - "fork" if origin and upstream exist and point to different hosts or paths
-//   - "clone" otherwise (single remote, or all remotes share the same base URL)
+// A repo is a "fork" if it has at least two remotes with distinct normalized URLs.
+// This catches cases where the upstream remote is misspelled (e.g. "upstram").
+//
+// A repo is a "clone" if it has zero or one unique remote URL.
 func DeriveKind(remotes []Remote) string {
-	if len(remotes) == 0 {
+	if len(remotes) <= 1 {
 		return KindClone
 	}
 
-	originURL := OriginFetchURL(remotes)
-	upstreamURL := ""
+	// Collect distinct normalized URLs across all remotes.
+	seen := make(map[string]bool, len(remotes))
 
 	for _, rm := range remotes {
-		if rm.Name == "upstream" {
-			upstreamURL = rm.FetchURL
-
-			break
+		if rm.FetchURL != "" {
+			seen[NormalizeURL(rm.FetchURL)] = true
 		}
 	}
 
-	if upstreamURL == "" || originURL == "" {
-		return KindClone
+	if len(seen) >= 2 {
+		return KindFork
 	}
 
-	// Compare normalized URLs (strip scheme).
-	if NormalizeURL(originURL) == NormalizeURL(upstreamURL) {
-		return KindClone
-	}
-
-	return KindFork
+	return KindClone
 }
 
 // OriginFetchURL returns the fetch URL for the "origin" remote, or empty string.
 func OriginFetchURL(remotes []Remote) string {
 	for _, rm := range remotes {
-		if rm.Name == "origin" {
+		if rm.Name == RemoteOrigin {
 			return rm.FetchURL
 		}
 	}
 
 	return ""
+}
+
+// UpstreamFetchURL returns the fetch URL for the "upstream" remote, or empty string.
+func UpstreamFetchURL(remotes []Remote) string {
+	for _, rm := range remotes {
+		if rm.Name == RemoteUpstream {
+			return rm.FetchURL
+		}
+	}
+
+	return ""
+}
+
+// FindRemote returns the Remote with the given name, or nil if not found.
+func FindRemote(remotes []Remote, name string) *Remote {
+	for i := range remotes {
+		if remotes[i].Name == name {
+			return &remotes[i]
+		}
+	}
+
+	return nil
+}
+
+// HasDistinctRemote reports whether the repo has a remote with a URL
+// different from origin's URL (i.e. a potential upstream/fork source).
+// Returns the name of the first such remote, or empty string.
+func HasDistinctRemote(remotes []Remote) (string, bool) {
+	originURL := OriginFetchURL(remotes)
+	if originURL == "" {
+		return "", false
+	}
+
+	normOrigin := NormalizeURL(originURL)
+
+	for _, rm := range remotes {
+		if rm.Name == RemoteOrigin {
+			continue
+		}
+
+		if rm.FetchURL != "" && NormalizeURL(rm.FetchURL) != normOrigin {
+			return rm.Name, true
+		}
+	}
+
+	return "", false
 }
 
 // ExtractHost extracts the hostname from a git remote URL.
