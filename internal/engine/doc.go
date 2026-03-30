@@ -4,14 +4,14 @@
 //
 // # Domain types
 //
-// The core types are [Alert], [ActionSuggestion], [Result], [Assignment],
-// and the enums [Severity], [SubjectKind], [CheckKind], [ActionKind].
+// The core types are [Alert], [models.ActionSuggestion], [models.Result], [Assignment],
+// and the enums [Severity], [models.SubjectKind], [models.CheckKind], [models.ActionKind].
 // These are shared across the checks, actions, and UX packages.
 //
-// # Checks and actions
+// # models.Checks and actions
 //
-// [Check] and [Action] are interfaces implemented by provider-specific
-// concrete types ([GitCheck], [GitHubCheck], [GitAction], etc.).
+// [models.Check] and [models.Action] are interfaces implemented by provider-specific
+// concrete types ([GitCheck], [GitHubmodels.Check], [GitAction], etc.).
 // Each provider struct embeds a [describer] for Name/Description and
 // provides a typed Evaluate or Execute method.
 //
@@ -21,7 +21,7 @@
 //
 // # Registries
 //
-// [CheckRegistry] and [ActionRegistry] are flat maps keyed by name.
+// [models.CheckRegistry] and [models.ActionRegistry] are flat maps keyed by name.
 // They serve two purposes: runtime lookup and config-time discovery
 // (listing available checks/actions with descriptions for the wizard).
 //

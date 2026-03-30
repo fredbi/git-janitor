@@ -2,55 +2,59 @@ package facts
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fredbi/git-janitor/internal/git"
-	"github.com/fredbi/git-janitor/internal/github"
+	"github.com/fredbi/git-janitor/internal/engine"
+	git "github.com/fredbi/git-janitor/internal/git/backend"
+	github "github.com/fredbi/git-janitor/internal/github/backend"
 	"github.com/fredbi/git-janitor/internal/ux/types"
 )
 
-// FactsPanel displays a quick recap of the selected repository's properties.
-type FactsPanel struct {
-	Info       *git.RepoInfo
-	GitHubData *github.RepoData
-	Offset     int // scroll offset
-	Width      int
-	Height     int
+// Panel displays a quick recap of the selected repository's properties.
+type Panel struct {
+	Info   *engine.RepoInfo
+	Offset int // scroll offset
+	Width  int
+	Height int
 }
 
-// New creates a new FactsPanel.
-func New() FactsPanel {
-	return FactsPanel{}
+// New creates a new Panel.
+func New() Panel {
+	return Panel{}
 }
 
-func (p *FactsPanel) SetInfo(info *git.RepoInfo) {
+func (p *Panel) SetInfo(info *engine.RepoInfo) {
 	p.Info = info
-	p.GitHubData = nil // clear until GitHub data arrives
+	p.Info.GitHubInfo = nil // clear until GitHub data arrives
 	p.Offset = 0
 }
 
-func (p *FactsPanel) SetGitHubData(data *github.RepoData) {
-	p.GitHubData = data
+func (p *Panel) SetGitHubData(info *engine.RepoInfo) {
+	if p.Info == nil {
+		p.Info = info
+
+		return
+	}
+
+	p.Info.GitHubInfo = info.GitHubInfo
 }
 
-func (p *FactsPanel) SetSize(w, h int) {
+func (p *Panel) SetSize(w, h int) {
 	p.Width = w
 	p.Height = h
 }
 
-func (p *FactsPanel) Update(msg tea.Msg) tea.Cmd {
+func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return nil
 	}
 
 	lines := p.buildLines()
-	maxOffset := len(lines) - p.Height
-	if maxOffset < 0 {
-		maxOffset = 0
-	}
+	maxOffset := max(len(lines)-p.Height, 0)
 
 	switch km.String() {
 	case "up", "k":
@@ -70,8 +74,8 @@ func (p *FactsPanel) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (p *FactsPanel) View() string {
-	if p.Info == nil {
+func (p *Panel) View() string {
+	if p.Info.IsEmpty() {
 		return lipgloss.NewStyle().Foreground(types.CurrentTheme.Dim).
 			Render("  Select a repository to view its properties.")
 	}
@@ -79,31 +83,29 @@ func (p *FactsPanel) View() string {
 	lines := p.buildLines()
 
 	// Apply scroll.
-	end := p.Offset + p.Height
-	if end > len(lines) {
-		end = len(lines)
-	}
+	end := min(p.Offset+p.Height, len(lines))
 
 	visible := lines[p.Offset:end]
 
 	return strings.Join(visible, "\n")
 }
 
-func (p *FactsPanel) buildLines() []string {
-	if p.Info == nil {
+func (p *Panel) buildLines() []string {
+	if p.Info.IsEmpty() {
 		return nil
 	}
 
 	info := p.Info
 	t := types.CurrentTheme
+	// TODO: factorize
 	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(t.Secondary)
 	valStyle := lipgloss.NewStyle().Foreground(t.Text)
 	dimStyle := lipgloss.NewStyle().Foreground(t.Dim)
 	warnStyle := lipgloss.NewStyle().Foreground(t.Warning)
 
-	if info.Err != nil {
+	if err := info.Err(); err != nil {
 		return []string{
-			warnStyle.Render(fmt.Sprintf("  Error: %v", info.Err)),
+			warnStyle.Render(fmt.Sprintf("  Error: %v", err)),
 		}
 	}
 
@@ -114,31 +116,36 @@ func (p *FactsPanel) buildLines() []string {
 	}
 
 	// Path.
-	line("Path:", info.Path)
+	line("Path:", info.GitInfo.Path)
 
 	// Kind and SCM.
-	line("Kind:", info.Kind)
-	line("SCM:", info.SCM)
+	line("Kind:", info.GitInfo.Kind.String())
+	line("SCM:", info.GitInfo.SCM.String())
 
 	// Remote status (shown when fetch failed).
-	if info.FetchErr != nil {
-		lines = append(lines, fmt.Sprintf("  %s  %s",
-			labelStyle.Render("Remote:"),
-			warnStyle.Render("unavailable — "+info.FetchErr.Error())))
+	if info.GitInfo.FetchErr != nil {
+		lines = append(
+			lines,
+			"  "+
+				labelStyle.Render("Remote:")+
+				" "+
+				warnStyle.Render(fmt.Sprintf("unavailable — %v", info.GitInfo.FetchErr))+
+				" ",
+		)
 	}
 
 	// Non-git directory: show minimal info.
-	if !info.IsGit {
+	if !info.GitInfo.IsGit {
 		return lines
 	}
 
 	// Last commit.
-	if !info.LastCommit.IsZero() {
-		line("Last commit:", info.LastCommit.Format("2006-01-02 15:04"))
+	if !info.GitInfo.LastCommit.IsZero() {
+		line("Last commit:", info.GitInfo.LastCommit.Format("2006-01-02 15:04"))
 	}
 
 	// Current branch.
-	branch := info.Status.Branch
+	branch := info.GitInfo.Status.Branch
 	if branch == "" {
 		branch = "(detached HEAD)"
 	}
@@ -146,12 +153,12 @@ func (p *FactsPanel) buildLines() []string {
 	line("Branch:", branch)
 
 	// Default branch.
-	if info.DefaultBranch != "" {
-		line("Default:", info.DefaultBranch)
+	if info.GitInfo.DefaultBranch != "" {
+		line("Default:", info.GitInfo.DefaultBranch)
 	}
 
 	// HEAD.
-	oid := info.Status.OID
+	oid := info.GitInfo.Status.OID
 	if len(oid) > 10 {
 		oid = oid[:10]
 	}
@@ -159,10 +166,10 @@ func (p *FactsPanel) buildLines() []string {
 	line("HEAD:", oid)
 
 	// Upstream.
-	if info.Status.Upstream != "" {
-		upstream := info.Status.Upstream
-		if info.Status.Ahead > 0 || info.Status.Behind > 0 {
-			upstream += fmt.Sprintf("  (ahead %d, behind %d)", info.Status.Ahead, info.Status.Behind)
+	if info.GitInfo.Status.Upstream != "" {
+		upstream := info.GitInfo.Status.Upstream
+		if info.GitInfo.Status.Ahead > 0 || info.GitInfo.Status.Behind > 0 {
+			upstream += fmt.Sprintf("  (ahead %d, behind %d)", info.GitInfo.Status.Ahead, info.GitInfo.Status.Behind)
 		}
 
 		line("Upstream:", upstream)
@@ -171,10 +178,10 @@ func (p *FactsPanel) buildLines() []string {
 	}
 
 	// Dirty status.
-	if info.Status.IsDirty() {
+	if info.GitInfo.Status.IsDirty() {
 		var counts []string
 
-		staged, unstaged, untracked := classifyEntries(info.Status.Entries)
+		staged, unstaged, untracked := classifyEntries(info.GitInfo.Status.Entries)
 		if staged > 0 {
 			counts = append(counts, fmt.Sprintf("%d staged", staged))
 		}
@@ -193,15 +200,15 @@ func (p *FactsPanel) buildLines() []string {
 	}
 
 	// Branches summary.
-	local, remote := countBranches(info.Branches)
+	local, remote := countBranches(info.GitInfo.Branches)
 	line("Branches:", fmt.Sprintf("%d local, %d remote", local, remote))
 
 	// Remotes.
-	if len(info.Remotes) > 0 {
+	if len(info.GitInfo.Remotes) > 0 {
 		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  %s", labelStyle.Render("Remotes:")))
+		lines = append(lines, "  "+labelStyle.Render("Remotes:"))
 
-		for _, rm := range info.Remotes {
+		for _, rm := range info.GitInfo.Remotes {
 			lines = append(lines, fmt.Sprintf("    %s  %s",
 				valStyle.Render(rm.Name),
 				dimStyle.Render(rm.FetchURL),
@@ -210,14 +217,14 @@ func (p *FactsPanel) buildLines() []string {
 	}
 
 	// Stashes.
-	if len(info.Stashes) > 0 {
+	if len(info.GitInfo.Stashes) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, fmt.Sprintf("  %s  %s",
 			labelStyle.Render("Stashes:"),
-			valStyle.Render(fmt.Sprintf("%d", len(info.Stashes))),
+			valStyle.Render(strconv.Itoa(len(info.GitInfo.Stashes))),
 		))
 
-		for _, st := range info.Stashes {
+		for _, st := range info.GitInfo.Stashes {
 			msg := st.Message
 			if msg == "" {
 				msg = "(no message)"
@@ -237,8 +244,12 @@ func (p *FactsPanel) buildLines() []string {
 	return lines
 }
 
-func (p *FactsPanel) buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle lipgloss.Style) []string {
-	gh := p.GitHubData
+func (p *Panel) buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle lipgloss.Style) []string {
+	if p.Info.IsEmpty() {
+		return nil
+	}
+
+	gh := p.Info.GitHubInfo
 	if gh == nil {
 		return nil
 	}
@@ -288,7 +299,7 @@ func (p *FactsPanel) buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle 
 	// Counts on one line.
 	counts := fmt.Sprintf("★ %d  Forks: %d  Issues: %d  PRs: %d",
 		gh.StarCount, gh.ForkCount, gh.OpenIssues, gh.OpenPRs)
-	lines = append(lines, fmt.Sprintf("  %s", valStyle.Render(counts)))
+	lines = append(lines, "  "+valStyle.Render(counts))
 
 	// License.
 	if gh.License != "" {
@@ -335,7 +346,7 @@ func classifyEntries(entries []git.StatusEntry) (staged, unstaged, untracked int
 	return
 }
 
-func (p *FactsPanel) buildSecurityLines(gh *github.RepoData, labelStyle, valStyle, dimStyle, warnStyle lipgloss.Style) []string {
+func (p *Panel) buildSecurityLines(gh *github.RepoInfo, labelStyle, valStyle, dimStyle, warnStyle lipgloss.Style) []string {
 	if gh.SecuritySkipped {
 		return []string{fmt.Sprintf("  %s  %s",
 			labelStyle.Render("Security:"),

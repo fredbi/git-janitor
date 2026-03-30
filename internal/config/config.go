@@ -155,7 +155,6 @@ const (
 	SCMKindOther  SCMKind = "other"
 )
 
-
 // EnabledChecks returns the list of check names enabled for the given root,
 // after applying the root's disable overrides to the defaults.
 // If no rules are configured, returns nil (meaning "run all registered checks").
@@ -282,8 +281,7 @@ func LoadDefault() (*Config, error) {
 
 	path, err := DefaultConfigPath()
 	if err != nil {
-		// Cannot determine path — return defaults silently.
-		return cfg, nil
+		return cfg, nil //nolint:nilerr // Cannot determine path — return defaults silently.
 	}
 
 	fsys := os.DirFS(filepath.Dir(path))
@@ -470,8 +468,9 @@ func (c *Config) Save() error {
 //
 // It creates the parent directory if it does not exist.
 func (c *Config) SaveTo(path string) error {
+	const readableDirPerm = 0o755
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, readableDirPerm); err != nil {
 		return fmt.Errorf("creating config directory %s: %w", dir, err)
 	}
 
@@ -479,18 +478,11 @@ func (c *Config) SaveTo(path string) error {
 	if err != nil {
 		return fmt.Errorf("creating config file %s: %w", path, err)
 	}
+	defer func() {
+		_ = f.Close()
+	}()
 
-	encErr := c.EncodeYAML(f)
-
-	if closeErr := f.Close(); closeErr != nil {
-		if encErr != nil {
-			return fmt.Errorf("writing config to %s: %w (also: close: %v)", path, encErr, closeErr)
-		}
-
-		return fmt.Errorf("closing config file %s: %w", path, closeErr)
-	}
-
-	if encErr != nil {
+	if encErr := c.EncodeYAML(f); encErr != nil {
 		return fmt.Errorf("writing config to %s: %w", path, encErr)
 	}
 

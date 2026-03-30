@@ -1,36 +1,6 @@
 package engine
 
-import (
-	"context"
-	"fmt"
-	"iter"
-	"slices"
-
-	"github.com/fredbi/git-janitor/internal/git"
-	"github.com/fredbi/git-janitor/internal/github"
-)
-
-// gitCheckEvaluator is implemented by any check that can evaluate git.RepoInfo.
-// Both GitCheck and types embedding GitCheck satisfy this via their Evaluate method.
-type gitCheckEvaluator interface {
-	Evaluate(info *git.RepoInfo) (iter.Seq[Alert], error)
-}
-
-// githubCheckEvaluator is implemented by any check that can evaluate github.RepoData.
-type githubCheckEvaluator interface {
-	Evaluate(data *github.RepoData) (iter.Seq[Alert], error)
-}
-
-// gitActionExecutor is implemented by any action that can execute via git.Runner.
-type gitActionExecutor interface {
-	Execute(ctx context.Context, r *git.Runner, info *git.RepoInfo, subjects []string) (Result, error)
-}
-
-// githubActionExecutor is implemented by any action that can execute via github.Client.
-type githubActionExecutor interface {
-	Execute(ctx context.Context, client *github.Client, data *github.RepoData, subjects []string, params []map[string]string) (Result, error)
-}
-
+/*
 // Engine is the orchestrator that connects configuration rules to check
 // evaluation and action execution.
 //
@@ -40,8 +10,8 @@ type githubActionExecutor interface {
 // For Phase 2, it will grow into a full scheduler with priority queue,
 // rate limiting, and persistence.
 type Engine struct {
-	Checks  *CheckRegistry
-	Actions *ActionRegistry
+	options
+
 	History *History
 }
 
@@ -50,18 +20,62 @@ type Engine struct {
 // packages, or call RegisterAll manually to populate the registries.
 func New() *Engine {
 	return &Engine{
-		Checks:  NewCheckRegistry(),
-		Actions: NewActionRegistry(),
+		Checks:  registries.NewCheckRegistry(),
+		Actions: registries.NewActionRegistry(),
+		Runners: registries.NewRunnerRegistry(),
 		History: NewHistory(500),
 	}
 }
 
+func (e *Engine) SetConfig(cfg *config.Config) {
+	e.cfg = cfg
+}
+
 // Evaluate dispatches a check to the appropriate typed Evaluate method
 // based on the check's Kind. It uses interface assertions so concrete
-// types embedding GitCheck or GitHubCheck are correctly dispatched.
-func (e *Engine) Evaluate(check Check, input RepoInfo) (iter.Seq[Alert], error) {
+// types embedding GitCheck or GitHubmodels.Check are correctly dispatched.
+func (e *Engine) Evaluate(ctx context.Context, check ifaces.Check, input ifaces.RepoInfo) (iter.Seq[models.Alert], error) {
+	return e.evaluate(ctx, check, input)
+}
+
+// EvaluateRepo runs all enabled checks for a git repository and collects
+// the resulting alerts. Alerts with SeverityNone are included so the
+// caller can determine which checks ran.
+//
+// The enabledmodels.Checks parameter is the list of check names from config.
+// If empty, all registered git checks are run.
+func (e *Engine) EvaluateRepo(ctx context.Context,
+	info *git.RepoInfo, enabledChecks []string,
+) (iter.Seq[models.Alert], error) {
+	return e.evaluateRepo(ctx, info, enabledChecks)
+}
+
+// EvaluateGitHub runs all enabled GitHub checks for a repository and collects
+// the resulting alerts. This parallels [EvaluateRepo] for git checks.
+//
+// The enabledmodels.Checks parameter is the list of check names from config.
+// If empty, or if no github-* checks are in the list, all registered
+// GitHub checks are run. This handles the common case where a user's
+// config predates the addition of GitHub checks.
+func (e *Engine) EvaluateGitHub(ctx context.Context, data *github.RepoData, enabledChecks []string) (iter.Seq[models.Alert], error) {
+	return e.evaluateGithub(ctx, data, enabledChecks)
+}
+
+// Execute runs a suggested action after validating that the action's
+// models.SubjectKind matctx context.Context, runner *git.Runner, info *git.RepoInfo, suggestion models.ActionSuggestion
+func (e *Engine) Execute(ctx context.Context, runner *git.Runner, info *git.RepoInfo, suggestion models.ActionSuggestion) (models.Result, error) {
+	return e.execute(ctx, runner, info, suggestion)
+}
+
+// ExecuteGitHub runs a GitHub ctx context.Context, client *github.Client, data *github.RepoData, suggestion models.ActionSuggestion
+func (e *Engine) ExecuteGitHub(ctx context.Context, client *github.Client, data *github.RepoData, suggestion models.ActionSuggestion) (models.Result, error) {
+	return e.executeGithub(ctx, client, data, suggestion)
+}
+
+
+func (e *Engine) evaluate(ctx context.Context, check ifaces.Check, input ifaces.RepoInfo) (iter.Seq[models.Alert], error) {
 	switch check.Kind() {
-	case CheckKindGit:
+	case models.CheckKindGit:
 		gc, ok := check.(gitCheckEvaluator)
 		if !ok {
 			return nil, fmt.Errorf("engine: check %q (kind=git) does not implement gitCheckEvaluator", check.Name())
@@ -74,7 +88,7 @@ func (e *Engine) Evaluate(check Check, input RepoInfo) (iter.Seq[Alert], error) 
 
 		return gc.Evaluate(info)
 
-	case CheckKindGitHub:
+	case models.CheckKindGitHub:
 		gc, ok := check.(githubCheckEvaluator)
 		if !ok {
 			return nil, fmt.Errorf("engine: check %q (kind=github) does not implement githubCheckEvaluator", check.Name())
@@ -82,7 +96,7 @@ func (e *Engine) Evaluate(check Check, input RepoInfo) (iter.Seq[Alert], error) 
 
 		data, ok := input.(*github.RepoData)
 		if !ok {
-			return nil, fmt.Errorf("engine: GitHubCheck %q expects *github.RepoData, got %T", check.Name(), input)
+			return nil, fmt.Errorf("engine: GitHubmodels.Check %q expects *github.RepoData, got %T", check.Name(), input)
 		}
 
 		return gc.Evaluate(data)
@@ -92,18 +106,12 @@ func (e *Engine) Evaluate(check Check, input RepoInfo) (iter.Seq[Alert], error) 
 	}
 }
 
-// EvaluateRepo runs all enabled checks for a git repository and collects
-// the resulting alerts. Alerts with SeverityNone are included so the
-// caller can determine which checks ran.
-//
-// The enabledChecks parameter is the list of check names from config.
-// If empty, all registered git checks are run.
-func (e *Engine) EvaluateRepo(_ context.Context, info *git.RepoInfo, enabledChecks []string) []Alert {
-	var alerts []Alert
+func (e *Engine) evaluateRepo(_ context.Context, info *git.RepoInfo, enabledChecks []string) (iter.Seq[models.Alert], error) {
+	var alerts []models.Alert
 
 	for name, check := range e.Checks.All() {
 		// Skip non-git checks.
-		if check.Kind() != CheckKindGit {
+		if check.Kind() != models.CheckKindGit {
 			continue
 		}
 
@@ -119,9 +127,9 @@ func (e *Engine) EvaluateRepo(_ context.Context, info *git.RepoInfo, enabledChec
 
 		seq, err := gc.Evaluate(info)
 		if err != nil {
-			alerts = append(alerts, Alert{
+			alerts = append(alerts, models.Alert{
 				CheckName: name,
-				Severity:  SeverityHigh,
+				Severity:  models.SeverityHigh,
 				Summary:   fmt.Sprintf("check %q failed: %v", name, err),
 			})
 
@@ -129,9 +137,9 @@ func (e *Engine) EvaluateRepo(_ context.Context, info *git.RepoInfo, enabledChec
 		}
 
 		if seq == nil {
-			alerts = append(alerts, Alert{
+			alerts = append(alerts, models.Alert{
 				CheckName: name,
-				Severity:  SeverityNone,
+				Severity:  models.SeverityNone,
 			})
 
 			continue
@@ -143,21 +151,14 @@ func (e *Engine) EvaluateRepo(_ context.Context, info *git.RepoInfo, enabledChec
 	}
 
 	// Sort by severity descending (high first).
-	slices.SortStableFunc(alerts, func(a, b Alert) int {
+	slices.SortStableFunc(alerts, func(a, b models.Alert) int {
 		return int(b.Severity) - int(a.Severity)
 	})
 
-	return alerts
+	return slices.Values(alerts), nil
 }
 
-// EvaluateGitHub runs all enabled GitHub checks for a repository and collects
-// the resulting alerts. This parallels [EvaluateRepo] for git checks.
-//
-// The enabledChecks parameter is the list of check names from config.
-// If empty, or if no github-* checks are in the list, all registered
-// GitHub checks are run. This handles the common case where a user's
-// config predates the addition of GitHub checks.
-func (e *Engine) EvaluateGitHub(_ context.Context, data *github.RepoData, enabledChecks []string) []Alert {
+func (e *Engine) evaluateGitHub(_ context.Context, data *github.RepoData, enabledChecks []string) (iter.Seq[models.Alert], error) {
 	// If the enabled list has no GitHub checks, run all of them.
 	hasGitHubChecks := false
 	for _, name := range enabledChecks {
@@ -168,10 +169,10 @@ func (e *Engine) EvaluateGitHub(_ context.Context, data *github.RepoData, enable
 		}
 	}
 
-	var alerts []Alert
+	var alerts []models.Alert
 
 	for name, check := range e.Checks.All() {
-		if check.Kind() != CheckKindGitHub {
+		if check.Kind() != models.CheckKindGitHub {
 			continue
 		}
 
@@ -186,9 +187,9 @@ func (e *Engine) EvaluateGitHub(_ context.Context, data *github.RepoData, enable
 
 		seq, err := gc.Evaluate(data)
 		if err != nil {
-			alerts = append(alerts, Alert{
+			alerts = append(alerts, models.Alert{
 				CheckName: name,
-				Severity:  SeverityHigh,
+				Severity:  models.SeverityHigh,
 				Summary:   fmt.Sprintf("check %q failed: %v", name, err),
 			})
 
@@ -196,9 +197,9 @@ func (e *Engine) EvaluateGitHub(_ context.Context, data *github.RepoData, enable
 		}
 
 		if seq == nil {
-			alerts = append(alerts, Alert{
+			alerts = append(alerts, models.Alert{
 				CheckName: name,
-				Severity:  SeverityNone,
+				Severity:  models.SeverityNone,
 			})
 
 			continue
@@ -209,30 +210,23 @@ func (e *Engine) EvaluateGitHub(_ context.Context, data *github.RepoData, enable
 		}
 	}
 
-	slices.SortStableFunc(alerts, func(a, b Alert) int {
+	slices.SortStableFunc(alerts, func(a, b models.Alert) int {
 		return int(b.Severity) - int(a.Severity)
 	})
 
-	return alerts
+	return slices.Values(alerts), nil
 }
 
-// Execute runs a suggested action after validating that the action's
-// SubjectKind matches the suggestion's SubjectKind.
-func (e *Engine) Execute(
-	ctx context.Context,
-	runner *git.Runner,
-	info *git.RepoInfo,
-	suggestion ActionSuggestion,
-) (Result, error) {
+func (e *Engine) execute(ctx context.Context, runner *git.Runner, info *git.RepoInfo, suggestion models.ActionSuggestion) (models.Result, error) {
 	action, ok := e.Actions.Get(suggestion.ActionName)
 	if !ok {
-		return Result{}, fmt.Errorf("engine: action %q not found in registry", suggestion.ActionName)
+		return models.Result{}, fmt.Errorf("engine: action %q not found in registry", suggestion.ActionName)
 	}
 
-	// Validate SubjectKind match.
-	if action.ApplyTo() != SubjectNone && suggestion.SubjectKind != SubjectNone &&
+	// Validate models.SubjectKind match.
+	if action.ApplyTo() != models.SubjectNone && suggestion.SubjectKind != models.SubjectNone &&
 		action.ApplyTo() != suggestion.SubjectKind {
-		return Result{}, fmt.Errorf(
+		return models.Result{}, fmt.Errorf(
 			"engine: action %q applies to %s but suggestion has %s subjects",
 			suggestion.ActionName, action.ApplyTo(), suggestion.SubjectKind,
 		)
@@ -240,28 +234,23 @@ func (e *Engine) Execute(
 
 	ga, ok := action.(gitActionExecutor)
 	if !ok {
-		return Result{}, fmt.Errorf("engine: action %q does not implement gitActionExecutor (got %T)", suggestion.ActionName, action)
+		return models.Result{}, fmt.Errorf("engine: action %q does not implement gitActionExecutor (got %T)", suggestion.ActionName, action)
 	}
 
 	return ga.Execute(ctx, runner, info, suggestion.Subjects)
 }
 
-// ExecuteGitHub runs a GitHub API action.
-func (e *Engine) ExecuteGitHub(
-	ctx context.Context,
-	client *github.Client,
-	data *github.RepoData,
-	suggestion ActionSuggestion,
-) (Result, error) {
+func (e *Engine) executeGitHub(ctx context.Context, client *github.Client, data *github.RepoData, suggestion models.ActionSuggestion) (models.Result, error) {
 	action, ok := e.Actions.Get(suggestion.ActionName)
 	if !ok {
-		return Result{}, fmt.Errorf("engine: action %q not found in registry", suggestion.ActionName)
+		return models.Result{}, fmt.Errorf("engine: action %q not found in registry", suggestion.ActionName)
 	}
 
 	ga, ok := action.(githubActionExecutor)
 	if !ok {
-		return Result{}, fmt.Errorf("engine: action %q does not implement githubActionExecutor (got %T)", suggestion.ActionName, action)
+		return models.Result{}, fmt.Errorf("engine: action %q does not implement githubActionExecutor (got %T)", suggestion.ActionName, action)
 	}
 
 	return ga.Execute(ctx, client, data, suggestion.Subjects, suggestion.Params)
 }
+*/

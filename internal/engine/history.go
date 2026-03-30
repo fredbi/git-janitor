@@ -1,6 +1,10 @@
 package engine
 
-import "time"
+import (
+	"time"
+
+	"github.com/fredbi/git-janitor/internal/models"
+)
 
 // HistoryEntry records a single executed action and its result.
 type HistoryEntry struct {
@@ -8,7 +12,7 @@ type HistoryEntry struct {
 	RepoPath   string
 	ActionName string
 	Subjects   []string
-	Result     Result
+	Result     models.Result
 }
 
 // History is an in-memory ring buffer of HistoryEntry records.

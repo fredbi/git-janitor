@@ -10,11 +10,11 @@ import (
 
 // --- Test check and action implementations ---
 
-type testBranchCheck struct {
+type testBranchmodels.Check struct {
 	GitCheck
 }
 
-func (c testBranchCheck) Evaluate(info *git.RepoInfo) (iter.Seq[Alert], error) {
+func (c testBranchmodels.Check) Evaluate(info *git.RepoInfo) (iter.Seq[Alert], error) {
 	var lagging []string
 
 	for _, b := range info.Branches {
@@ -25,50 +25,50 @@ func (c testBranchCheck) Evaluate(info *git.RepoInfo) (iter.Seq[Alert], error) {
 
 	if len(lagging) == 0 {
 		return singleAlert(Alert{
-			CheckName: c.Name(),
+			models.CheckName: c.Name(),
 			Severity:  SeverityNone,
 		}), nil
 	}
 
 	return singleAlert(Alert{
-		CheckName: c.Name(),
+		models.CheckName: c.Name(),
 		Severity:  SeverityLow,
 		Summary:   "branches lagging behind remote",
-		Suggestions: []ActionSuggestion{{
-			ActionName:  "update-branch",
-			SubjectKind: SubjectBranch,
+		Suggestions: []models.ActionSuggestion{{
+			models.ActionName:  "update-branch",
+			models.SubjectKind: SubjectBranch,
 			Subjects:    lagging,
 		}},
 	}), nil
 }
 
-type testRepoCheck struct {
+type testRepomodels.Check struct {
 	GitCheck
 }
 
-func (c testRepoCheck) Evaluate(info *git.RepoInfo) (iter.Seq[Alert], error) {
+func (c testRepomodels.Check) Evaluate(info *git.RepoInfo) (iter.Seq[Alert], error) {
 	if info.Status.IsDirty() {
 		return singleAlert(Alert{
-			CheckName: c.Name(),
+			models.CheckName: c.Name(),
 			Severity:  SeverityHigh,
 			Summary:   "worktree has uncommitted changes",
 		}), nil
 	}
 
 	return singleAlert(Alert{
-		CheckName: c.Name(),
+		models.CheckName: c.Name(),
 		Severity:  SeverityNone,
 	}), nil
 }
 
-type testUpdateAction struct {
+type testUpdatemodels.Action struct {
 	GitAction
 }
 
-func (testUpdateAction) ApplyTo() SubjectKind { return SubjectBranch }
+func (testUpdatemodels.Action) ApplyTo() models.SubjectKind { return SubjectBranch }
 
-func (a testUpdateAction) Execute(_ context.Context, _ *git.Runner, _ *git.RepoInfo, subjects []string) (Result, error) {
-	return Result{OK: true, Message: "updated " + subjects[0]}, nil
+func (a testUpdatemodels.Action) Execute(_ context.Context, _ *git.Runner, _ *git.RepoInfo, subjects []string) (models.Result, error) {
+	return models.Result{OK: true, Message: "updated " + subjects[0]}, nil
 }
 
 func singleAlert(a Alert) iter.Seq[Alert] {
@@ -79,11 +79,11 @@ func singleAlert(a Alert) iter.Seq[Alert] {
 
 // --- Registry tests ---
 
-func TestCheckRegistry(t *testing.T) {
-	r := NewCheckRegistry()
+func Testmodels.CheckRegistry(t *testing.T) {
+	r := Newmodels.CheckRegistry()
 
-	check := testBranchCheck{GitCheck: GitCheck{
-		Describer: Describer{CheckName: "branch-lagging", CheckDescription: "detects lagging branches"},
+	check := testBranchmodels.Check{GitCheck: GitCheck{
+		Describer: Describer{models.CheckName: "branch-lagging", models.CheckDescription: "detects lagging branches"},
 	}}
 
 	r.Register(check)
@@ -105,16 +105,16 @@ func TestCheckRegistry(t *testing.T) {
 		t.Errorf("Description() = %q", got.Description())
 	}
 
-	if got.Kind() != CheckKindGit {
-		t.Errorf("Kind() = %v, want CheckKindGit", got.Kind())
+	if got.Kind() != models.CheckKindGit {
+		t.Errorf("Kind() = %v, want models.CheckKindGit", got.Kind())
 	}
 }
 
-func TestCheckRegistry_DuplicatePanics(t *testing.T) {
-	r := NewCheckRegistry()
+func Testmodels.CheckRegistry_DuplicatePanics(t *testing.T) {
+	r := Newmodels.CheckRegistry()
 
-	check := testBranchCheck{GitCheck: GitCheck{
-		Describer: Describer{CheckName: "dup"},
+	check := testBranchmodels.Check{GitCheck: GitCheck{
+		Describer: Describer{models.CheckName: "dup"},
 	}}
 
 	r.Register(check)
@@ -128,12 +128,12 @@ func TestCheckRegistry_DuplicatePanics(t *testing.T) {
 	r.Register(check) // should panic
 }
 
-func TestCheckRegistry_All(t *testing.T) {
-	r := NewCheckRegistry()
+func Testmodels.CheckRegistry_All(t *testing.T) {
+	r := Newmodels.CheckRegistry()
 
-	r.Register(testBranchCheck{GitCheck: GitCheck{Describer: Describer{CheckName: "a"}}})
-	r.Register(testRepoCheck{GitCheck: GitCheck{Describer: Describer{CheckName: "b"}}})
-	r.Register(testBranchCheck{GitCheck: GitCheck{Describer: Describer{CheckName: "c"}}})
+	r.Register(testBranchmodels.Check{GitCheck: GitCheck{Describer: Describer{models.CheckName: "a"}}})
+	r.Register(testRepomodels.Check{GitCheck: GitCheck{Describer: Describer{models.CheckName: "b"}}})
+	r.Register(testBranchmodels.Check{GitCheck: GitCheck{Describer: Describer{models.CheckName: "c"}}})
 
 	var names []string
 
@@ -151,11 +151,11 @@ func TestCheckRegistry_All(t *testing.T) {
 	}
 }
 
-func TestActionRegistry(t *testing.T) {
-	r := NewActionRegistry()
+func Testmodels.ActionRegistry(t *testing.T) {
+	r := Newmodels.ActionRegistry()
 
-	action := testUpdateAction{GitAction: GitAction{
-		Describer: Describer{CheckName: "update-branch", CheckDescription: "fast-forward a branch"},
+	action := testUpdatemodels.Action{GitAction: GitAction{
+		Describer: Describer{models.CheckName: "update-branch", models.CheckDescription: "fast-forward a branch"},
 	}}
 
 	r.Register(action)
@@ -179,11 +179,11 @@ func TestActionRegistry(t *testing.T) {
 func TestEngine_EvaluateRepo(t *testing.T) {
 	e := New()
 
-	e.Checks.Register(testBranchCheck{GitCheck: GitCheck{
-		Describer: Describer{CheckName: "branch-lagging", CheckDescription: "lagging"},
+	e.models.Checks.Register(testBranchmodels.Check{GitCheck: GitCheck{
+		Describer: Describer{models.CheckName: "branch-lagging", models.CheckDescription: "lagging"},
 	}})
-	e.Checks.Register(testRepoCheck{GitCheck: GitCheck{
-		Describer: Describer{CheckName: "dirty-worktree", CheckDescription: "dirty"},
+	e.models.Checks.Register(testRepomodels.Check{GitCheck: GitCheck{
+		Describer: Describer{models.CheckName: "dirty-worktree", models.CheckDescription: "dirty"},
 	}})
 
 	info := &git.RepoInfo{
@@ -208,8 +208,8 @@ func TestEngine_EvaluateRepo(t *testing.T) {
 		t.Errorf("alerts[0].Severity = %v, want High", alerts[0].Severity)
 	}
 
-	if alerts[0].CheckName != "dirty-worktree" {
-		t.Errorf("alerts[0].CheckName = %q, want dirty-worktree", alerts[0].CheckName)
+	if alerts[0].models.CheckName != "dirty-worktree" {
+		t.Errorf("alerts[0].models.CheckName = %q, want dirty-worktree", alerts[0].models.CheckName)
 	}
 
 	if alerts[1].Severity != SeverityLow {
@@ -222,12 +222,12 @@ func TestEngine_EvaluateRepo(t *testing.T) {
 	}
 
 	sug := alerts[1].Suggestions[0]
-	if sug.ActionName != "update-branch" {
-		t.Errorf("suggestion ActionName = %q", sug.ActionName)
+	if sug.models.ActionName != "update-branch" {
+		t.Errorf("suggestion models.ActionName = %q", sug.models.ActionName)
 	}
 
-	if sug.SubjectKind != SubjectBranch {
-		t.Errorf("suggestion SubjectKind = %v", sug.SubjectKind)
+	if sug.models.SubjectKind != SubjectBranch {
+		t.Errorf("suggestion models.SubjectKind = %v", sug.models.SubjectKind)
 	}
 
 	if len(sug.Subjects) != 1 || sug.Subjects[0] != "feature/old" {
@@ -238,11 +238,11 @@ func TestEngine_EvaluateRepo(t *testing.T) {
 func TestEngine_EvaluateRepo_FilterByEnabled(t *testing.T) {
 	e := New()
 
-	e.Checks.Register(testBranchCheck{GitCheck: GitCheck{
-		Describer: Describer{CheckName: "branch-lagging"},
+	e.models.Checks.Register(testBranchmodels.Check{GitCheck: GitCheck{
+		Describer: Describer{models.CheckName: "branch-lagging"},
 	}})
-	e.Checks.Register(testRepoCheck{GitCheck: GitCheck{
-		Describer: Describer{CheckName: "dirty-worktree"},
+	e.models.Checks.Register(testRepomodels.Check{GitCheck: GitCheck{
+		Describer: Describer{models.CheckName: "dirty-worktree"},
 	}})
 
 	info := &git.RepoInfo{
@@ -257,40 +257,40 @@ func TestEngine_EvaluateRepo_FilterByEnabled(t *testing.T) {
 		t.Fatalf("got %d alerts, want 1", len(alerts))
 	}
 
-	if alerts[0].CheckName != "branch-lagging" {
-		t.Errorf("CheckName = %q, want branch-lagging", alerts[0].CheckName)
+	if alerts[0].models.CheckName != "branch-lagging" {
+		t.Errorf("models.CheckName = %q, want branch-lagging", alerts[0].models.CheckName)
 	}
 }
 
-func TestEngine_Execute_SubjectKindValidation(t *testing.T) {
+func TestEngine_Execute_models.SubjectKindValidation(t *testing.T) {
 	e := New()
 
-	e.Actions.Register(testUpdateAction{GitAction: GitAction{
-		Describer: Describer{CheckName: "update-branch"},
+	e.models.Actions.Register(testUpdatemodels.Action{GitAction: GitAction{
+		Describer: Describer{models.CheckName: "update-branch"},
 	}})
 
-	// Mismatched SubjectKind.
-	_, err := e.Execute(context.Background(), nil, nil, ActionSuggestion{
-		ActionName:  "update-branch",
-		SubjectKind: SubjectTag, // wrong — action applies to Branch
+	// Mismatched models.SubjectKind.
+	_, err := e.Execute(context.Background(), nil, nil, models.ActionSuggestion{
+		models.ActionName:  "update-branch",
+		models.SubjectKind: SubjectTag, // wrong — action applies to Branch
 		Subjects:    []string{"v1.0.0"},
 	})
 
 	if err == nil {
-		t.Error("expected error for SubjectKind mismatch")
+		t.Error("expected error for models.SubjectKind mismatch")
 	}
 }
 
 func TestEngine_Execute_Success(t *testing.T) {
 	e := New()
 
-	e.Actions.Register(testUpdateAction{GitAction: GitAction{
-		Describer: Describer{CheckName: "update-branch"},
+	e.models.Actions.Register(testUpdatemodels.Action{GitAction: GitAction{
+		Describer: Describer{models.CheckName: "update-branch"},
 	}})
 
-	result, err := e.Execute(context.Background(), nil, nil, ActionSuggestion{
-		ActionName:  "update-branch",
-		SubjectKind: SubjectBranch,
+	result, err := e.Execute(context.Background(), nil, nil, models.ActionSuggestion{
+		models.ActionName:  "update-branch",
+		models.SubjectKind: SubjectBranch,
 		Subjects:    []string{"feature/foo"},
 	})
 
@@ -312,9 +312,9 @@ func TestEngine_Execute_Success(t *testing.T) {
 func TestHistory(t *testing.T) {
 	h := NewHistory(3)
 
-	h.Append(HistoryEntry{ActionName: "a"})
-	h.Append(HistoryEntry{ActionName: "b"})
-	h.Append(HistoryEntry{ActionName: "c"})
+	h.Append(HistoryEntry{models.ActionName: "a"})
+	h.Append(HistoryEntry{models.ActionName: "b"})
+	h.Append(HistoryEntry{models.ActionName: "c"})
 
 	entries := h.Entries()
 	if len(entries) != 3 {
@@ -322,24 +322,24 @@ func TestHistory(t *testing.T) {
 	}
 
 	// Newest first.
-	if entries[0].ActionName != "c" || entries[2].ActionName != "a" {
-		t.Errorf("order: %s %s %s", entries[0].ActionName, entries[1].ActionName, entries[2].ActionName)
+	if entries[0].models.ActionName != "c" || entries[2].models.ActionName != "a" {
+		t.Errorf("order: %s %s %s", entries[0].models.ActionName, entries[1].models.ActionName, entries[2].models.ActionName)
 	}
 
 	// Overflow: oldest evicted.
-	h.Append(HistoryEntry{ActionName: "d"})
+	h.Append(HistoryEntry{models.ActionName: "d"})
 
 	if h.Len() != 3 {
 		t.Fatalf("Len() after overflow = %d, want 3", h.Len())
 	}
 
 	entries = h.Entries()
-	if entries[0].ActionName != "d" || entries[2].ActionName != "b" {
-		t.Errorf("after overflow: %s %s %s", entries[0].ActionName, entries[1].ActionName, entries[2].ActionName)
+	if entries[0].models.ActionName != "d" || entries[2].models.ActionName != "b" {
+		t.Errorf("after overflow: %s %s %s", entries[0].models.ActionName, entries[1].models.ActionName, entries[2].models.ActionName)
 	}
 }
 
-// --- Severity/SubjectKind string tests ---
+// --- Severity/models.SubjectKind string tests ---
 
 func TestSeverityString(t *testing.T) {
 	tests := []struct {
@@ -360,7 +360,7 @@ func TestSeverityString(t *testing.T) {
 	}
 }
 
-func TestSubjectKindString(t *testing.T) {
+func Testmodels.SubjectKindString(t *testing.T) {
 	if SubjectBranch.String() != "branch" {
 		t.Errorf("SubjectBranch.String() = %q", SubjectBranch.String())
 	}

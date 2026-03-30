@@ -1,9 +1,9 @@
-* update "Facts": add progress bar
-* refresh repo: add progress bar
+* update "Facts": add progress bar (for github?)
+* ~refresh repo: add progress bar~
 
 go-fred-mcp addition:
 
- /btwjust exporting all data structures is a seemingly simple refactoring action but it seems hard to execute. Could you
+ /btw just exporting all data structures is a seemingly simple refactoring action but it seems hard to execute. Could you
       describe what kind of extra tool you'd need to make this snappier and less error prone?
 
     Great question. Here's what would have made this dramatically easier:

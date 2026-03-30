@@ -1,6 +1,8 @@
 package infos
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -8,8 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/engine"
-	"github.com/fredbi/git-janitor/internal/git"
-	"github.com/fredbi/git-janitor/internal/github"
+	"github.com/fredbi/git-janitor/internal/ifaces"
+	"github.com/fredbi/git-janitor/internal/models"
 	actions "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-actions"
 	alerts "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-alerts"
 	branches "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-branches"
@@ -34,34 +36,35 @@ const RightTabCount = 5
 
 // Panel is a tab container for the right Pane.
 type Panel struct {
-	Facts    facts.FactsPanel
-	Branches branches.BranchesPanel
-	Alerts   alerts.AlertsPanel
-	Actions  actions.ActionsListPanel
-	Recent   recent.RecentPanel
+	Facts    facts.Panel
+	Branches branches.Panel
+	Alerts   alerts.Panel
+	Actions  actions.Panel
+	Recent   recent.Panel
 	Active   RightTab
 	Width    int
 	Height   int
 
 	// Engine evaluates checks and produces alerts.
-	Engine *engine.Engine
+	Engine ifaces.Engineer
 
 	// RepoPath is the path of the currently displayed repo (for action execution).
 	RepoPath string
 
 	// LastAlerts stores the most recent evaluation results for suggestion lookup.
-	LastAlerts []engine.Alert
+	LastAlerts []models.Alert
 }
 
 // New creates a new Panel with default tab sub-panels.
-func New() Panel {
+func New(eng ifaces.Engineer) Panel {
 	return Panel{
 		Facts:    facts.New(),
 		Branches: branches.New(),
 		Alerts:   alerts.New(),
-		Actions:  actions.New(),
+		Actions:  actions.New(eng),
 		Recent:   recent.New(),
 		Active:   TabFacts,
+		Engine:   eng,
 	}
 }
 
@@ -83,6 +86,7 @@ func (p *Panel) SetTab(t RightTab) {
 }
 
 // RightTabDefs defines the ordered tab labels and IDs.
+// TODO: unexport.
 var RightTabDefs = []struct { //nolint:gochecknoglobals // tab definition table
 	Label string
 	ID    RightTab
@@ -96,46 +100,59 @@ var RightTabDefs = []struct { //nolint:gochecknoglobals // tab definition table
 
 // SetRepoInfo updates all panels with new repo data.
 // If an engine is configured, it evaluates checks and populates the alerts panel.
-func (p *Panel) SetRepoInfo(info *git.RepoInfo, enabledChecks []string) {
-	p.RepoPath = info.Path
+func (p *Panel) SetRepoInfo(info *engine.RepoInfo) {
+	p.RepoPath = info.GitInfo.Path
 	p.Facts.SetInfo(info)
 	p.Branches.SetInfo(info)
 	p.Actions.Clear()
 
-	if p.Engine != nil {
-		p.LastAlerts = p.Engine.EvaluateRepo(nil, info, enabledChecks) //nolint:staticcheck // ctx not needed for pure evaluation
-		p.Alerts.SetAlerts(p.LastAlerts)
+	if p.Engine == nil || info.IsEmpty() {
+		return
 	}
+
+	ctx := context.Background() // TODO: bubbletea context?
+	ctx = p.Engine.WithRunner(ctx, "git-runner", p.RepoPath)
+	ctx = p.Engine.WithRepoInfo(ctx, p.RepoPath, info)
+
+	alertsIter, err := p.Engine.Evaluate(ctx) // TODO: enabled checks are reloaded in Engine with config
+	if err != nil {
+		return // TODO: we should return an error
+	}
+
+	p.LastAlerts = slices.AppendSeq(p.LastAlerts, alertsIter)
+	p.Alerts.SetAlerts(p.LastAlerts)
 }
 
 // SetGitHubData updates the panel with GitHub API data.
 // It evaluates GitHub checks, merges their alerts with the existing git alerts,
 // and updates the Facts panel with a GitHub sub-section.
-func (p *Panel) SetGitHubData(data *github.RepoData, enabledChecks []string) {
-	p.Facts.SetGitHubData(data)
+func (p *Panel) SetGitHubData(info *engine.RepoInfo) { // TODO: enabled checks are reloaded in Engine with config
+	p.Facts.SetGitHubData(info)
 
-	if p.Engine == nil || data.Err != nil {
+	if p.Engine == nil || info.Err() != nil {
 		return
 	}
 
-	ghAlerts := p.Engine.EvaluateGitHub(nil, data, enabledChecks) //nolint:staticcheck // ctx not needed for pure evaluation
+	ctx := context.Background() // TODO: bubbletea context?
+	originURL := engine.OriginFetchURL(info)
+	if originURL == "" {
+		return
+	}
+	ctx = p.Engine.WithRunner(ctx, "github-runner", originURL)
+	ctx = p.Engine.WithRepoInfo(ctx, p.RepoPath, info)
+	alertsIter, err := p.Engine.Evaluate(ctx)
+	if err != nil {
+		return // TODO: we should return an error
+	}
 
 	// Merge: append GitHub alerts to existing git alerts, re-sort by severity.
-	merged := make([]engine.Alert, 0, len(p.LastAlerts)+len(ghAlerts))
+	// TODO: dedupe?
+	p.LastAlerts = slices.AppendSeq(p.LastAlerts, alertsIter)
 
-	for _, a := range p.LastAlerts {
-		merged = append(merged, a)
-	}
-
-	for _, a := range ghAlerts {
-		merged = append(merged, a)
-	}
-
-	slices.SortStableFunc(merged, func(a, b engine.Alert) int {
+	slices.SortStableFunc(p.LastAlerts, func(a, b models.Alert) int {
 		return int(b.Severity) - int(a.Severity)
 	})
 
-	p.LastAlerts = merged
 	p.Alerts.SetAlerts(p.LastAlerts)
 }
 
@@ -174,11 +191,7 @@ func (p *Panel) SetSize(w, h int) {
 
 	// Reserve 2 lines for the tab bar + 2 for border.
 	contentW := w - 2
-	contentH := h - 4
-
-	if contentH < 1 {
-		contentH = 1
-	}
+	contentH := max(h-4, 1)
 
 	p.Facts.SetSize(contentW, contentH)
 	p.Branches.SetSize(contentW, contentH)
@@ -193,11 +206,6 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 	if sm, ok := msg.(uxtypes.ShowSuggestionsMsg); ok {
 		if sm.AlertIndex >= 0 && sm.AlertIndex < len(p.Alerts.Alerts) {
 			alert := p.Alerts.Alerts[sm.AlertIndex]
-
-			if p.Engine != nil {
-				p.Actions.Actions = p.Engine.Actions
-			}
-
 			p.Actions.SetAlert(p.RepoPath, &alert)
 			p.Active = TabActions
 		}
@@ -216,9 +224,9 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 		return p.Actions.Update(msg)
 	case TabRecent:
 		return p.Recent.Update(msg)
+	default:
+		panic(errors.New("invalid tab"))
 	}
-
-	return nil
 }
 
 // View renders the right panel with its tab bar and active content.
@@ -271,6 +279,8 @@ func (p *Panel) View(focused bool) string {
 		content = p.Actions.View()
 	case TabRecent:
 		content = p.Recent.View()
+	default:
+		panic(errors.New("invalid tab"))
 	}
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, header, content)

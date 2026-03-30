@@ -6,15 +6,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 // DiscoverRepos walks dir looking for first-level subdirectories.
 //
 // Each subdirectory is listed as a RepoItem. Directories containing a .git
 // subdirectory have IsGit set to true; others are listed with IsGit=false.
+//
 // Hidden directories and common noise directories are skipped.
-func DiscoverRepos(dir string) ([]uxtypes.RepoItem, error) {
+func DiscoverRepos(dir string) ([]models.RepoItem, error) {
 	dir, err := ExpandHome(dir)
 	if err != nil {
 		return nil, err
@@ -28,7 +29,7 @@ func DiscoverRepos(dir string) ([]uxtypes.RepoItem, error) {
 	// If the root directory itself is a git repo, return it as a single entry
 	// rather than diving into its subdirectories.
 	if IsGitDir(dir) {
-		return []uxtypes.RepoItem{{
+		return []models.RepoItem{{
 			Name:  filepath.Base(dir),
 			Path:  dir,
 			IsGit: true,
@@ -40,7 +41,7 @@ func DiscoverRepos(dir string) ([]uxtypes.RepoItem, error) {
 		return nil, err
 	}
 
-	var repos []uxtypes.RepoItem
+	var repos []models.RepoItem
 
 	for _, d := range entries {
 		if !d.IsDir() {
@@ -66,7 +67,7 @@ func DiscoverRepos(dir string) ([]uxtypes.RepoItem, error) {
 			continue
 		}
 
-		repos = append(repos, uxtypes.RepoItem{
+		repos = append(repos, models.RepoItem{
 			Name:  name,
 			Path:  path,
 			IsGit: IsGitDir(path),
@@ -105,6 +106,8 @@ func IsLinkedWorktree(dir string) bool {
 }
 
 // ShouldSkipDir returns true for directory names that should never be traversed.
+//
+// TODO: configurable skip list.
 func ShouldSkipDir(name string) bool {
 	switch name {
 	case "vendor", "node_modules", "__pycache__", ".cache", "dist", "build":
@@ -115,6 +118,8 @@ func ShouldSkipDir(name string) bool {
 }
 
 // ExpandHome expands a leading ~/ in a path to the user's home directory.
+//
+// TODO: move to fs.
 func ExpandHome(path string) (string, error) {
 	if strings.HasPrefix(path, "~/") {
 		home, err := os.UserHomeDir()

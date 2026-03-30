@@ -14,20 +14,28 @@ import (
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
-// WizardStep tracks the current page of the configuration wizard.
-type WizardStep int
+// Step tracks the current page of the configuration wizard.
+type Step int
 
 const (
-	wizardStepRoots        WizardStep = iota // browse/select existing roots
-	wizardStepEditRoot                       // choose which field of a root to edit
-	wizardStepEditPath                       // edit a root's path
-	wizardStepEditName                       // edit a root's display name
-	wizardStepEditInterval                   // edit a root's schedule interval
-	wizardStepPath                           // enter a new root directory path
-	wizardStepName                           // enter a name for the new root
-	wizardStepInterval                       // enter a schedule interval for the new root
-	wizardStepConfirm                        // review the new entry and confirm
-	wizardStepDone                           // all done, about to close
+	stepRoots        Step = iota // browse/select existing roots
+	stepEditRoot                 // choose which field of a root to edit
+	stepEditPath                 // edit a root's path
+	stepEditName                 // edit a root's display name
+	stepEditInterval             // edit a root's schedule interval
+	stepPath                     // enter a new root directory path
+	stepName                     // enter a name for the new root
+	stepInterval                 // enter a schedule interval for the new root
+	stepConfirm                  // review the new entry and confirm
+	stepDone                     // all done, about to close
+)
+
+const keyEnter = "enter"
+
+const (
+	paneWidth  = 50
+	paneHeight = 14
+	padding    = 8
 )
 
 // ConfigWizard is a multi-step overlay dialog for editing the configuration.
@@ -48,15 +56,15 @@ type ConfigWizard struct {
 	EditPathInput   textinput.Model // text input for editing an existing root's path
 	EditFieldCursor int             // cursor within the edit-root field list
 
-	Step    WizardStep
+	Step    Step
 	Visible bool
 	Dirty   bool   // whether any modification has been made
 	Err     string // validation error shown inline
 
-	// root list cursor (for wizardStepRoots)
+	// root list cursor (for stepRoots)
 	RootCursor int
 
-	// index of the root being edited (for wizardStepEditRoot)
+	// index of the root being edited (for stepEditRoot)
 	EditIndex int
 
 	// pending values for the root being added
@@ -84,14 +92,14 @@ func New(cfg *config.Config) ConfigWizard {
 	pi.Placeholder = defPath
 	pi.Prompt = "  Path: "
 	pi.CharLimit = 512
-	pi.Width = 50
+	pi.Width = paneWidth
 	pi.SetValue(defPath)
 
 	ni := textinput.New()
 	ni.Placeholder = "(defaults to directory name)"
 	ni.Prompt = "  Name: "
 	ni.CharLimit = 64
-	ni.Width = 50
+	ni.Width = paneWidth
 
 	ii := textinput.New()
 	ii.Placeholder = defInterval
@@ -109,13 +117,13 @@ func New(cfg *config.Config) ConfigWizard {
 	eni.Placeholder = "(directory name)"
 	eni.Prompt = "  Name: "
 	eni.CharLimit = 64
-	eni.Width = 50
+	eni.Width = paneWidth
 
 	epi := textinput.New()
 	epi.Placeholder = "/path/to/root"
 	epi.Prompt = "  Path: "
 	epi.CharLimit = 512
-	epi.Width = 50
+	epi.Width = paneWidth
 
 	return ConfigWizard{
 		Cfg:             cfg,
@@ -125,44 +133,10 @@ func New(cfg *config.Config) ConfigWizard {
 		EditInput:       ei,
 		EditNameInput:   eni,
 		EditPathInput:   epi,
-		Step:            wizardStepRoots,
+		Step:            stepRoots,
 		DefaultPath:     defPath,
 		DefaultInterval: defInterval,
 	}
-}
-
-// resolveDefaultPath returns the absolute path of the parent of the current
-// working directory, or an empty string on error.
-func resolveDefaultPath() string {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return ""
-	}
-
-	parent := filepath.Join(cwd, "..")
-
-	abs, err := filepath.Abs(parent)
-	if err != nil {
-		return ""
-	}
-
-	return abs
-}
-
-// resolveDefaultInterval returns the schedule interval from the embedded
-// default config, formatted as a Go duration string (e.g. "5m0s").
-func resolveDefaultInterval() string {
-	defaults, err := config.LoadDefaults()
-	if err != nil || defaults.Defaults.RootConfig == nil {
-		return "5m"
-	}
-
-	d := defaults.Defaults.RootConfig.ScheduleInterval
-	if d <= 0 {
-		return "5m"
-	}
-
-	return d.String()
 }
 
 // Show opens the wizard overlay.
@@ -176,14 +150,14 @@ func (w *ConfigWizard) Show() tea.Cmd {
 	w.RootCursor = 0
 
 	if len(w.Cfg.Roots) > 0 {
-		w.Step = wizardStepRoots
+		w.Step = stepRoots
 		w.blurAll()
 
 		return nil
 	}
 
 	// No roots — jump to add-new flow.
-	w.Step = wizardStepPath
+	w.Step = stepPath
 	w.PathInput.SetValue(w.DefaultPath)
 	w.NameInput.SetValue("")
 	w.IntervalInput.SetValue("")
@@ -198,28 +172,19 @@ func (w *ConfigWizard) Hide() {
 	w.blurAll()
 }
 
-func (w *ConfigWizard) blurAll() {
-	w.PathInput.Blur()
-	w.NameInput.Blur()
-	w.IntervalInput.Blur()
-	w.EditInput.Blur()
-	w.EditNameInput.Blur()
-	w.EditPathInput.Blur()
-}
-
 // SetSize adjusts the wizard popup dimensions.
 func (w *ConfigWizard) SetSize(termWidth, termHeight int) {
 	w.Width = termWidth * 3 / 4
-	if w.Width < 50 {
-		w.Width = min(50, termWidth)
+	if w.Width < paneWidth {
+		w.Width = min(paneWidth, termWidth)
 	}
 
 	w.Height = termHeight / 2
-	if w.Height < 14 {
-		w.Height = min(14, termHeight)
+	if w.Height < paneHeight {
+		w.Height = min(paneHeight, termHeight)
 	}
 
-	innerW := w.Width - 8 // borders + padding
+	innerW := w.Width - padding // borders + padding
 	w.PathInput.Width = innerW
 	w.NameInput.Width = innerW
 	w.IntervalInput.Width = innerW
@@ -230,8 +195,7 @@ func (w *ConfigWizard) SetSize(termWidth, termHeight int) {
 
 // Update handles messages while the wizard is visible.
 func (w *ConfigWizard) Update(msg tea.Msg) (tea.Cmd, *uxtypes.ConfigWizardMsg) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	if msg, ok := msg.(tea.KeyMsg); ok {
 		return w.handleKey(msg)
 	}
 
@@ -239,21 +203,94 @@ func (w *ConfigWizard) Update(msg tea.Msg) (tea.Cmd, *uxtypes.ConfigWizardMsg) {
 	var cmd tea.Cmd
 
 	switch w.Step {
-	case wizardStepPath:
+	case stepPath:
 		w.PathInput, cmd = w.PathInput.Update(msg)
-	case wizardStepName:
+	case stepName:
 		w.NameInput, cmd = w.NameInput.Update(msg)
-	case wizardStepInterval:
+	case stepInterval:
 		w.IntervalInput, cmd = w.IntervalInput.Update(msg)
-	case wizardStepEditPath:
+	case stepEditPath:
 		w.EditPathInput, cmd = w.EditPathInput.Update(msg)
-	case wizardStepEditInterval:
+	case stepEditInterval:
 		w.EditInput, cmd = w.EditInput.Update(msg)
-	case wizardStepEditName:
+	case stepEditName:
 		w.EditNameInput, cmd = w.EditNameInput.Update(msg)
+	default:
 	}
 
 	return cmd, nil
+}
+
+// View renders the wizard overlay.
+func (w *ConfigWizard) View(termWidth, termHeight int) string {
+	if !w.Visible {
+		return ""
+	}
+
+	var content strings.Builder
+
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("170")).
+		Render("Configuration Wizard")
+	content.WriteString(title + "\n")
+	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).
+		Render("Configure root directories for git-janitor to scan.") + "\n\n")
+
+	switch w.Step {
+	case stepRoots:
+		w.viewRoots(&content)
+	case stepEditRoot:
+		w.viewEditRoot(&content)
+	case stepEditPath:
+		w.viewEditPath(&content)
+	case stepEditName:
+		w.viewEditName(&content)
+	case stepEditInterval:
+		w.viewEditInterval(&content)
+	case stepPath:
+		w.viewPath(&content)
+	case stepName:
+		w.viewName(&content)
+	case stepInterval:
+		w.viewInterval(&content)
+	case stepConfirm:
+		w.viewConfirm(&content)
+	case stepDone:
+		w.viewDone(&content)
+	default:
+	}
+
+	// Error line.
+	if w.Err != "" {
+		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+		content.WriteString("\n" + errStyle.Render("  ⚠ "+w.Err) + "\n")
+	}
+
+	// Footer.
+	w.viewFooter(&content)
+
+	// Wrap in a bordered box.
+	border := lipgloss.NewStyle().
+		Border(lipgloss.DoubleBorder()).
+		BorderForeground(lipgloss.Color("170")).
+		Width(w.Width-2).
+		Padding(1, 2)
+
+	popup := border.Render(content.String())
+
+	return lipgloss.Place(
+		termWidth, termHeight,
+		lipgloss.Center, lipgloss.Center,
+		popup,
+	)
+}
+
+func (w *ConfigWizard) blurAll() {
+	w.PathInput.Blur()
+	w.NameInput.Blur()
+	w.IntervalInput.Blur()
+	w.EditInput.Blur()
+	w.EditNameInput.Blur()
+	w.EditPathInput.Blur()
 }
 
 func (w *ConfigWizard) handleKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWizardMsg) {
@@ -265,47 +302,47 @@ func (w *ConfigWizard) handleKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWizard
 	}
 
 	switch w.Step {
-	case wizardStepRoots:
+	case stepRoots:
 		return w.handleRootsKey(msg)
-	case wizardStepEditRoot:
+	case stepEditRoot:
 		return w.handleEditRootKey(msg)
-	case wizardStepEditPath:
+	case stepEditPath:
 		return w.handleEditPathKey(msg)
-	case wizardStepEditName:
+	case stepEditName:
 		return w.handleEditNameKey(msg)
-	case wizardStepEditInterval:
+	case stepEditInterval:
 		return w.handleEditIntervalKey(msg)
-	case wizardStepPath:
+	case stepPath:
 		return w.handlePathKey(msg)
-	case wizardStepName:
+	case stepName:
 		return w.handleNameKey(msg)
-	case wizardStepInterval:
+	case stepInterval:
 		return w.handleIntervalKey(msg)
-	case wizardStepConfirm:
+	case stepConfirm:
 		return w.handleConfirmKey(msg)
-	case wizardStepDone:
+	case stepDone:
 		w.Hide()
 
 		return nil, &uxtypes.ConfigWizardMsg{Cfg: w.Cfg}
+	default:
+		return nil, nil
 	}
-
-	return nil, nil
 }
 
 func (w *ConfigWizard) handleEsc() (tea.Cmd, *uxtypes.ConfigWizardMsg) {
 	switch w.Step {
-	case wizardStepEditRoot, wizardStepEditPath, wizardStepEditName, wizardStepEditInterval:
+	case stepEditRoot, stepEditPath, stepEditName, stepEditInterval:
 		// Go back to root list without saving the edit.
-		w.Step = wizardStepRoots
+		w.Step = stepRoots
 		w.Err = ""
 		w.blurAll()
 
 		return nil, nil
 
-	case wizardStepPath, wizardStepName, wizardStepInterval, wizardStepConfirm:
+	case stepPath, stepName, stepInterval, stepConfirm:
 		if len(w.Cfg.Roots) > 0 {
 			// Go back to root list.
-			w.Step = wizardStepRoots
+			w.Step = stepRoots
 			w.Err = ""
 			w.blurAll()
 
@@ -344,7 +381,7 @@ func (w *ConfigWizard) handleRootsKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigW
 			w.RootCursor++
 		}
 
-	case "enter":
+	case keyEnter:
 		if n == 0 {
 			return nil, nil
 		}
@@ -352,7 +389,7 @@ func (w *ConfigWizard) handleRootsKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigW
 		// Enter edit mode for the selected root (field selection).
 		w.EditIndex = w.RootCursor
 		w.EditFieldCursor = 0
-		w.Step = wizardStepEditRoot
+		w.Step = stepEditRoot
 		w.Err = ""
 
 		return nil, nil
@@ -375,7 +412,7 @@ func (w *ConfigWizard) handleRootsKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigW
 
 	case "a", "A":
 		// Start add-new-root flow.
-		w.Step = wizardStepPath
+		w.Step = stepPath
 		w.Err = ""
 		w.PathInput.SetValue(w.DefaultPath)
 		w.NameInput.SetValue("")
@@ -396,7 +433,7 @@ func (w *ConfigWizard) handleRootsKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigW
 		}
 
 		w.Err = ""
-		w.Step = wizardStepDone
+		w.Step = stepDone
 
 		return nil, nil
 	}
@@ -417,26 +454,26 @@ func (w *ConfigWizard) handleEditRootKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 		if w.EditFieldCursor < len(editRootFields)-1 {
 			w.EditFieldCursor++
 		}
-	case "enter":
+	case keyEnter:
 		root := w.Cfg.Roots[w.EditIndex]
 
 		switch editRootFields[w.EditFieldCursor] {
 		case "Path":
-			w.Step = wizardStepEditPath
+			w.Step = stepEditPath
 			w.Err = ""
 			w.EditPathInput.SetValue(root.Path)
 			w.EditPathInput.Focus()
 
 			return textinput.Blink, nil
 		case "Name":
-			w.Step = wizardStepEditName
+			w.Step = stepEditName
 			w.Err = ""
 			w.EditNameInput.SetValue(w.Cfg.RootDisplayName(w.EditIndex))
 			w.EditNameInput.Focus()
 
 			return textinput.Blink, nil
 		case "Interval":
-			w.Step = wizardStepEditInterval
+			w.Step = stepEditInterval
 			w.Err = ""
 			w.EditInput.SetValue(root.RootConfig.ScheduleInterval.String())
 			w.EditInput.Focus()
@@ -464,7 +501,7 @@ func (w *ConfigWizard) handleEditRootKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 		}
 
 		w.Err = ""
-		w.Step = wizardStepDone
+		w.Step = stepDone
 
 		return nil, nil
 	}
@@ -477,7 +514,7 @@ func (w *ConfigWizard) handleEditPathKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 	key := msg.String()
 
 	switch key {
-	case "enter":
+	case keyEnter:
 		path := strings.TrimSpace(w.EditPathInput.Value())
 		if path == "" {
 			w.Err = "Path cannot be empty."
@@ -522,7 +559,7 @@ func (w *ConfigWizard) handleEditPathKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 		w.Cfg.UpdateRootPath(w.EditIndex, path)
 		w.Dirty = true
 		w.Err = ""
-		w.Step = wizardStepEditRoot
+		w.Step = stepEditRoot
 		w.EditPathInput.Blur()
 
 		return nil, nil
@@ -540,13 +577,13 @@ func (w *ConfigWizard) handleEditNameKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 	key := msg.String()
 
 	switch key {
-	case "enter":
+	case keyEnter:
 		name := strings.TrimSpace(w.EditNameInput.Value())
 		// Empty name is valid — it will fall back to basename(path).
 		w.Cfg.UpdateRootName(w.EditIndex, name)
 		w.Dirty = true
 		w.Err = ""
-		w.Step = wizardStepEditRoot
+		w.Step = stepEditRoot
 		w.EditNameInput.Blur()
 
 		return nil, nil
@@ -564,7 +601,7 @@ func (w *ConfigWizard) handleEditIntervalKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.
 	key := msg.String()
 
 	switch key {
-	case "enter":
+	case keyEnter:
 		raw := strings.TrimSpace(w.EditInput.Value())
 		if raw == "" {
 			w.Err = "Interval cannot be empty."
@@ -589,7 +626,7 @@ func (w *ConfigWizard) handleEditIntervalKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.
 		w.Cfg.UpdateRootInterval(w.EditIndex, d)
 		w.Dirty = true
 		w.Err = ""
-		w.Step = wizardStepEditRoot
+		w.Step = stepEditRoot
 		w.EditInput.Blur()
 
 		return nil, nil
@@ -647,7 +684,7 @@ func (w *ConfigWizard) handlePathKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWi
 	key := msg.String()
 
 	switch key {
-	case "enter":
+	case keyEnter:
 		path := strings.TrimSpace(w.PathInput.Value())
 		if path == "" {
 			w.Err = "Path cannot be empty."
@@ -693,7 +730,7 @@ func (w *ConfigWizard) handlePathKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWi
 
 		w.PendingPath = path
 		w.Err = ""
-		w.Step = wizardStepName
+		w.Step = stepName
 		w.PathInput.Blur()
 
 		// Pre-fill name with the basename of the path.
@@ -715,12 +752,12 @@ func (w *ConfigWizard) handleNameKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWi
 	key := msg.String()
 
 	switch key {
-	case "enter":
+	case keyEnter:
 		name := strings.TrimSpace(w.NameInput.Value())
 		// Empty name is valid — AddRoot defaults to basename(path).
 		w.PendingName = name
 		w.Err = ""
-		w.Step = wizardStepInterval
+		w.Step = stepInterval
 		w.NameInput.Blur()
 		w.IntervalInput.Focus()
 
@@ -738,7 +775,7 @@ func (w *ConfigWizard) handleIntervalKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 	key := msg.String()
 
 	switch key {
-	case "enter":
+	case keyEnter:
 		raw := strings.TrimSpace(w.IntervalInput.Value())
 		if raw == "" {
 			raw = w.DefaultInterval
@@ -759,7 +796,7 @@ func (w *ConfigWizard) handleIntervalKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 
 		w.PendingInterval = d
 		w.Err = ""
-		w.Step = wizardStepConfirm
+		w.Step = stepConfirm
 		w.IntervalInput.Blur()
 
 		return nil, nil
@@ -776,7 +813,7 @@ func (w *ConfigWizard) handleConfirmKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Confi
 	key := msg.String()
 
 	switch key {
-	case "s", "S", "enter":
+	case "s", "S", keyEnter:
 		// Commit the root to the working config.
 		w.Cfg.AddRoot(w.PendingName, w.PendingPath, w.PendingInterval)
 		w.Dirty = true
@@ -789,7 +826,7 @@ func (w *ConfigWizard) handleConfirmKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Confi
 		}
 
 		w.Err = ""
-		w.Step = wizardStepDone
+		w.Step = stepDone
 
 		return nil, nil
 
@@ -805,7 +842,7 @@ func (w *ConfigWizard) handleConfirmKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Confi
 		}
 
 		// Reset for another entry.
-		w.Step = wizardStepPath
+		w.Step = stepPath
 		w.Err = ""
 		w.PathInput.SetValue(w.DefaultPath)
 		w.NameInput.SetValue("")
@@ -817,7 +854,7 @@ func (w *ConfigWizard) handleConfirmKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Confi
 	case "n", "N":
 		// Cancel this entry — go back to root list if roots exist.
 		if len(w.Cfg.Roots) > 0 {
-			w.Step = wizardStepRoots
+			w.Step = stepRoots
 			w.Err = ""
 			w.blurAll()
 
@@ -830,68 +867,6 @@ func (w *ConfigWizard) handleConfirmKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Confi
 	}
 
 	return nil, nil
-}
-
-// View renders the wizard overlay.
-func (w *ConfigWizard) View(termWidth, termHeight int) string {
-	if !w.Visible {
-		return ""
-	}
-
-	var content strings.Builder
-
-	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("170")).
-		Render("Configuration Wizard")
-	content.WriteString(title + "\n")
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).
-		Render("Configure root directories for git-janitor to scan.") + "\n\n")
-
-	switch w.Step {
-	case wizardStepRoots:
-		w.viewRoots(&content)
-	case wizardStepEditRoot:
-		w.viewEditRoot(&content)
-	case wizardStepEditPath:
-		w.viewEditPath(&content)
-	case wizardStepEditName:
-		w.viewEditName(&content)
-	case wizardStepEditInterval:
-		w.viewEditInterval(&content)
-	case wizardStepPath:
-		w.viewPath(&content)
-	case wizardStepName:
-		w.viewName(&content)
-	case wizardStepInterval:
-		w.viewInterval(&content)
-	case wizardStepConfirm:
-		w.viewConfirm(&content)
-	case wizardStepDone:
-		w.viewDone(&content)
-	}
-
-	// Error line.
-	if w.Err != "" {
-		errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-		content.WriteString("\n" + errStyle.Render("  ⚠ "+w.Err) + "\n")
-	}
-
-	// Footer.
-	w.viewFooter(&content)
-
-	// Wrap in a bordered box.
-	border := lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
-		BorderForeground(lipgloss.Color("170")).
-		Width(w.Width-2).
-		Padding(1, 2)
-
-	popup := border.Render(content.String())
-
-	return lipgloss.Place(
-		termWidth, termHeight,
-		lipgloss.Center, lipgloss.Center,
-		popup,
-	)
 }
 
 func (w *ConfigWizard) viewRoots(content *strings.Builder) {
@@ -930,7 +905,7 @@ func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {
 	root := w.Cfg.Roots[w.EditIndex]
 	heading := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 
-	content.WriteString(heading.Render(fmt.Sprintf("Editing root: %s", w.Cfg.RootDisplayName(w.EditIndex))) + "\n\n")
+	content.WriteString(heading.Render("Editing root: "+w.Cfg.RootDisplayName(w.EditIndex)) + "\n\n")
 
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	selected := lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
@@ -949,11 +924,12 @@ func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {
 	}
 
 	// Show "(inherited)" when no per-root override is set.
+	const inherited = " (inherited)"
 	if root.RootConfig.GitHub == nil {
-		ghLabel += " (inherited)"
-		secLabel += " (inherited)"
+		ghLabel += inherited
+		secLabel += inherited
 	} else if root.RootConfig.GitHub.SecurityAlerts == nil {
-		secLabel += " (inherited)"
+		secLabel += inherited
 	}
 
 	fields := []struct {
@@ -991,7 +967,7 @@ func (w *ConfigWizard) viewEditPath(content *strings.Builder) {
 	}
 
 	heading := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-	content.WriteString(heading.Render(fmt.Sprintf("Editing path for: %s", w.Cfg.RootDisplayName(w.EditIndex))) + "\n\n")
+	content.WriteString(heading.Render("Editing path for: "+w.Cfg.RootDisplayName(w.EditIndex)) + "\n\n")
 	content.WriteString("  Absolute path to a directory containing git Repos:\n\n")
 	content.WriteString(w.EditPathInput.View() + "\n")
 }
@@ -1002,7 +978,7 @@ func (w *ConfigWizard) viewEditName(content *strings.Builder) {
 	}
 
 	heading := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-	content.WriteString(heading.Render(fmt.Sprintf("Editing name for: %s", w.Cfg.Roots[w.EditIndex].Path)) + "\n\n")
+	content.WriteString(heading.Render("Editing name for: "+w.Cfg.Roots[w.EditIndex].Path) + "\n\n")
 	content.WriteString("  Display name (leave empty to use directory name):\n\n")
 	content.WriteString(w.EditNameInput.View() + "\n")
 }
@@ -1013,7 +989,7 @@ func (w *ConfigWizard) viewEditInterval(content *strings.Builder) {
 	}
 
 	heading := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-	content.WriteString(heading.Render(fmt.Sprintf("Editing interval for: %s", w.Cfg.RootDisplayName(w.EditIndex))) + "\n\n")
+	content.WriteString(heading.Render("Editing interval for: "+w.Cfg.RootDisplayName(w.EditIndex)) + "\n\n")
 	content.WriteString("  Schedule interval (Go duration syntax, e.g. 24h, 30m):\n\n")
 	content.WriteString(w.EditInput.View() + "\n")
 }
@@ -1077,12 +1053,12 @@ func (w *ConfigWizard) viewDone(content *strings.Builder) {
 
 	path, _ := config.DefaultConfigPath()
 	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).
-		Render(fmt.Sprintf("    Written to %s", path)) + "\n\n")
+		Render("    Written to "+path) + "\n\n")
 	content.WriteString("  Press any key to close.\n")
 }
 
 func (w *ConfigWizard) viewFooter(content *strings.Builder) {
-	if w.Step == wizardStepDone {
+	if w.Step == stepDone {
 		return
 	}
 
@@ -1098,4 +1074,38 @@ func (w *ConfigWizard) viewFooter(content *strings.Builder) {
 	parts = append(parts, hint.Render("Esc to cancel"))
 
 	content.WriteString("\n  " + strings.Join(parts, "  ") + "\n")
+}
+
+// resolveDefaultPath returns the absolute path of the parent of the current
+// working directory, or an empty string on error.
+func resolveDefaultPath() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+
+	parent := filepath.Join(cwd, "..")
+
+	abs, err := filepath.Abs(parent)
+	if err != nil {
+		return ""
+	}
+
+	return abs
+}
+
+// resolveDefaultInterval returns the schedule interval from the embedded
+// default config, formatted as a Go duration string (e.g. "5m0s").
+func resolveDefaultInterval() string {
+	defaults, err := config.LoadDefaults()
+	if err != nil || defaults.Defaults.RootConfig == nil {
+		return "5m"
+	}
+
+	d := defaults.Defaults.RootConfig.ScheduleInterval
+	if d <= 0 {
+		return "5m"
+	}
+
+	return d.String()
 }

@@ -262,6 +262,7 @@ func (f fakeFS) Open(name string) (fs.File, error) {
 
 type fakeFile struct {
 	*bytes.Reader
+
 	name string
 }
 

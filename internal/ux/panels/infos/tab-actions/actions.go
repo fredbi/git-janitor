@@ -7,19 +7,19 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fredbi/git-janitor/internal/engine"
+	"github.com/fredbi/git-janitor/internal/ifaces"
+	"github.com/fredbi/git-janitor/internal/models"
 	"github.com/fredbi/git-janitor/internal/ux/types"
 )
 
 // cardLines is the number of display lines per suggestion card.
 const cardLines = 4
 
-// ActionsListPanel displays suggested actions for the currently selected alert.
-type ActionsListPanel struct {
+// Panel displays suggested actions for the currently selected alert.
+type Panel struct {
 	RepoPath    string
-	Alert       *engine.Alert
-	Suggestions []engine.ActionSuggestion
-	Actions     *engine.ActionRegistry
+	Alert       *models.Alert
+	Suggestions []models.ActionSuggestion
 	Cursor      int
 	Offset      int
 	Width       int
@@ -27,23 +27,26 @@ type ActionsListPanel struct {
 
 	// Picker state (non-nil when Ctrl+P is active).
 	Picker *SubjectPicker
+	Engine ifaces.Engineer
 }
 
 // SubjectPicker is an overlay for selecting individual subjects.
 type SubjectPicker struct {
-	Suggestion engine.ActionSuggestion
+	Suggestion models.ActionSuggestion
 	Checked    []bool // one per subject
 	Cursor     int
 	Offset     int
 }
 
-// New creates an empty ActionsListPanel.
-func New() ActionsListPanel {
-	return ActionsListPanel{}
+// New creates an empty Panel.
+func New(eng ifaces.Engineer) Panel {
+	return Panel{
+		Engine: eng,
+	}
 }
 
 // SetAlert sets the alert whose suggestions are displayed.
-func (p *ActionsListPanel) SetAlert(repoPath string, alert *engine.Alert) {
+func (p *Panel) SetAlert(repoPath string, alert *models.Alert) {
 	p.RepoPath = repoPath
 	p.Picker = nil
 
@@ -63,7 +66,7 @@ func (p *ActionsListPanel) SetAlert(repoPath string, alert *engine.Alert) {
 }
 
 // Clear removes all suggestions.
-func (p *ActionsListPanel) Clear() {
+func (p *Panel) Clear() {
 	p.Alert = nil
 	p.Suggestions = nil
 	p.Picker = nil
@@ -71,16 +74,12 @@ func (p *ActionsListPanel) Clear() {
 	p.Offset = 0
 }
 
-func (p *ActionsListPanel) SetSize(w, h int) {
+func (p *Panel) SetSize(w, h int) {
 	p.Width = w
-	p.Height = h - 2
-
-	if p.Height < cardLines {
-		p.Height = cardLines
-	}
+	p.Height = max(h-2, cardLines)
 }
 
-func (p *ActionsListPanel) Update(msg tea.Msg) tea.Cmd {
+func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return nil
@@ -140,7 +139,16 @@ func (p *ActionsListPanel) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (p *ActionsListPanel) updatePicker(km tea.KeyMsg) tea.Cmd {
+func (p *Panel) View() string {
+	// If picker is active, render it instead of the card list.
+	if p.Picker != nil {
+		return p.viewPicker()
+	}
+
+	return p.viewCards()
+}
+
+func (p *Panel) updatePicker(km tea.KeyMsg) tea.Cmd {
 	pk := p.Picker
 	n := len(pk.Suggestion.Subjects)
 
@@ -162,11 +170,11 @@ func (p *ActionsListPanel) updatePicker(km tea.KeyMsg) tea.Cmd {
 		}
 	case "enter":
 		// Execute with selected subjects only.
-		var selected []string
+		var selected []models.ActionSubject
 
-		for i, name := range pk.Suggestion.Subjects {
+		for i, subject := range pk.Suggestion.Subjects {
 			if pk.Checked[i] {
-				selected = append(selected, name)
+				selected = append(selected, subject)
 			}
 		}
 
@@ -200,11 +208,8 @@ func (p *ActionsListPanel) updatePicker(km tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func (p *ActionsListPanel) clampScroll() {
-	visibleCards := p.Height / cardLines
-	if visibleCards < 1 {
-		visibleCards = 1
-	}
+func (p *Panel) clampScroll() {
+	visibleCards := max(p.Height/cardLines, 1)
 
 	if p.Cursor < p.Offset {
 		p.Offset = p.Cursor
@@ -215,12 +220,11 @@ func (p *ActionsListPanel) clampScroll() {
 	}
 }
 
-func (p *ActionsListPanel) clampPickerScroll() {
+func (p *Panel) clampPickerScroll() {
 	pk := p.Picker
-	visibleRows := p.Height - 3 // header + hint + separator
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
+	visibleRows := max(
+		// header + hint + separator
+		p.Height-3, 1)
 
 	if pk.Cursor < pk.Offset {
 		pk.Offset = pk.Cursor
@@ -231,16 +235,7 @@ func (p *ActionsListPanel) clampPickerScroll() {
 	}
 }
 
-func (p *ActionsListPanel) View() string {
-	// If picker is active, render it instead of the card list.
-	if p.Picker != nil {
-		return p.viewPicker()
-	}
-
-	return p.viewCards()
-}
-
-func (p *ActionsListPanel) viewPicker() string {
+func (p *Panel) viewPicker() string {
 	pk := p.Picker
 	t := types.CurrentTheme
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
@@ -261,20 +256,14 @@ func (p *ActionsListPanel) viewPicker() string {
 		pk.Suggestion.SubjectKind, accentStyle.Render(pk.Suggestion.ActionName)))
 	countLine := detailStyle.Render(fmt.Sprintf("  %d/%d selected", selectedCount, len(pk.Suggestion.Subjects)))
 
-	visibleRows := p.Height - 3
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
+	visibleRows := max(p.Height-3, 1)
 
-	end := pk.Offset + visibleRows
-	if end > len(pk.Suggestion.Subjects) {
-		end = len(pk.Suggestion.Subjects)
-	}
+	end := min(pk.Offset+visibleRows, len(pk.Suggestion.Subjects))
 
 	var rows []string
 
 	for i := pk.Offset; i < end; i++ {
-		name := pk.Suggestion.Subjects[i]
+		name := pk.Suggestion.Subjects[i].Subject
 
 		checkbox := "  ☐ "
 		if pk.Checked[i] {
@@ -299,7 +288,7 @@ func (p *ActionsListPanel) viewPicker() string {
 	return header + "\n" + countLine + "\n" + strings.Join(rows, "\n") + "\n" + hint
 }
 
-func (p *ActionsListPanel) viewCards() string {
+func (p *Panel) viewCards() string {
 	t := types.CurrentTheme
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
 	detailStyle := lipgloss.NewStyle().Foreground(t.Dim)
@@ -321,17 +310,11 @@ func (p *ActionsListPanel) viewCards() string {
 		return header + "\n" + msg
 	}
 
-	visibleCards := p.Height / cardLines
-	if visibleCards < 1 {
-		visibleCards = 1
-	}
+	visibleCards := max(p.Height/cardLines, 1)
 
 	var rows []string
 
-	end := p.Offset + visibleCards
-	if end > len(p.Suggestions) {
-		end = len(p.Suggestions)
-	}
+	end := min(p.Offset+visibleCards, len(p.Suggestions))
 
 	contentWidth := p.Width - 4
 
@@ -343,26 +326,26 @@ func (p *ActionsListPanel) viewCards() string {
 		nameStr := accentStyle.Render(sug.ActionName)
 
 		destructive := false
+		found := true
 
-		if p.Actions != nil {
-			if action, ok := p.Actions.Get(sug.ActionName); ok {
-				destructive = action.Destructive()
-			}
+		if action, ok := p.Engine.GetAction(sug.ActionName); ok {
+			destructive = action.Destructive()
+		} else {
+			nameStr += "  " + warnStyle.Render("⚠️  error: suggested action not found")
+			found = false
 		}
 
 		if destructive {
 			nameStr += "  " + warnStyle.Render("⚠️  destructive")
-		} else {
+		} else if found {
 			nameStr += "  ✅"
 		}
 
 		// Line 2: description from registry
 		descStr := detailStyle.Render("  (no description)")
 
-		if p.Actions != nil {
-			if action, ok := p.Actions.Get(sug.ActionName); ok {
-				descStr = detailStyle.Render(action.Description())
-			}
+		if action, ok := p.Engine.GetAction(sug.ActionName); ok {
+			descStr = detailStyle.Render(action.Description())
 		}
 
 		// Line 3: repo (short path) + subject kind
@@ -370,7 +353,7 @@ func (p *ActionsListPanel) viewCards() string {
 		line3 := fmt.Sprintf("repo: %s  |  %s", repoShort, sug.SubjectKind)
 
 		// Line 4: subjects
-		subjects := strings.Join(sug.Subjects, ", ")
+		subjects := strings.Join(sug.SubjectNames(), ", ")
 		if len(subjects) > contentWidth && contentWidth > 10 {
 			subjects = subjects[:contentWidth-3] + "..."
 		}

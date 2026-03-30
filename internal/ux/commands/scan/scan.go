@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fredbi/git-janitor/internal/config"
 	"github.com/fredbi/git-janitor/internal/fs"
+	"github.com/fredbi/git-janitor/internal/models"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -21,7 +22,7 @@ func Roots(cfg *config.Config) tea.Cmd {
 			return uxtypes.ScanResultMsg{Err: fmt.Errorf("no roots configured — use /config to add one")}
 		}
 
-		byRoot := make(map[int][]uxtypes.RepoItem, len(cfg.Roots))
+		byRoot := make(map[int][]models.RepoItem, len(cfg.Roots))
 		total := 0
 
 		for i, root := range cfg.Roots {
@@ -30,9 +31,9 @@ func Roots(cfg *config.Config) tea.Cmd {
 				return uxtypes.ScanResultMsg{Err: fmt.Errorf("scanning %s: %w", root.Path, err)}
 			}
 
-			items := make([]uxtypes.RepoItem, len(discovered))
+			items := make([]models.RepoItem, len(discovered))
 			for j, d := range discovered {
-				items[j] = uxtypes.RepoItem{
+				items[j] = models.RepoItem{
 					Name:  d.Name,
 					Path:  d.Path,
 					IsGit: d.IsGit,

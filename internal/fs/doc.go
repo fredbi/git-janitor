@@ -1,2 +1,2 @@
-// Package fs provides utilities to scan directories and files.
+// Package fs exposes the functionality that interacts with the local file system.
 package fs

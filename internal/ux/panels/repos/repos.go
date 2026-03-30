@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/config"
+	"github.com/fredbi/git-janitor/internal/models"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -155,12 +156,10 @@ func (p *Panel) SetSize(w, h int) {
 	p.Width = w
 	p.Height = h
 
-	listW := w - 2     // border
-	listH := h - 2 - 3 // border + tab bar (2 lines) + filter row (1 line)
-
-	if listH < 1 {
-		listH = 1
-	}
+	listW := w - 2 // border
+	listH := max(
+		// border + tab bar (2 lines) + filter row (1 line)
+		h-2-3, 1)
 
 	p.Filter.Width = listW - 6 // account for prompt width
 
@@ -266,7 +265,7 @@ func (p *Panel) applyFilter(items []list.Item) []list.Item {
 	var filtered []list.Item
 
 	for _, item := range items {
-		repo, ok := item.(uxtypes.RepoItem)
+		repo, ok := item.(models.RepoItem)
 		if !ok {
 			continue
 		}
@@ -308,17 +307,17 @@ func (p *Panel) SetRootItems(rootIndex int, items []list.Item) tea.Cmd {
 }
 
 // SelectedRepo returns the currently selected repository in the active tab.
-func (p *Panel) SelectedRepo() (uxtypes.RepoItem, bool) {
+func (p *Panel) SelectedRepo() (models.RepoItem, bool) {
 	if p.Active < 0 || p.Active >= len(p.Tabs) {
-		return uxtypes.RepoItem{}, false
+		return models.RepoItem{}, false
 	}
 
 	item := p.Tabs[p.Active].List.SelectedItem()
 	if item == nil {
-		return uxtypes.RepoItem{}, false
+		return models.RepoItem{}, false
 	}
 
-	repo, ok := item.(uxtypes.RepoItem)
+	repo, ok := item.(models.RepoItem)
 
 	return repo, ok
 }
@@ -384,10 +383,7 @@ func (p *Panel) clampVisibleStart() {
 // Returns -1 if the click doesn't land on a tab label.
 func (p *Panel) TabAtX(x int) int {
 	maxVis := p.maxVisibleTabs()
-	visEnd := p.VisibleStart + maxVis
-	if visEnd > len(p.Tabs) {
-		visEnd = len(p.Tabs)
-	}
+	visEnd := min(p.VisibleStart+maxVis, len(p.Tabs))
 
 	cursor := 1 // 1 char left padding
 
@@ -509,10 +505,7 @@ func (p *Panel) renderTabBar() string {
 		Padding(0, 1)
 
 	maxVis := p.maxVisibleTabs()
-	visEnd := p.VisibleStart + maxVis
-	if visEnd > len(p.Tabs) {
-		visEnd = len(p.Tabs)
-	}
+	visEnd := min(p.VisibleStart+maxVis, len(p.Tabs))
 
 	var parts []string
 
@@ -540,7 +533,7 @@ func (p *Panel) renderTabBar() string {
 }
 
 // RepoItemsToListItems converts a slice of RepoItem to a slice of list.Item.
-func RepoItemsToListItems(repos []uxtypes.RepoItem) []list.Item {
+func RepoItemsToListItems(repos []models.RepoItem) []list.Item {
 	items := make([]list.Item, len(repos))
 	for i, r := range repos {
 		items[i] = r

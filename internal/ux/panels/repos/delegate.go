@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fredbi/git-janitor/internal/models"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -35,7 +36,7 @@ func (d RepoDelegate) Spacing() int                              { return d.Base
 func (d RepoDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return d.Base.Update(msg, m) }
 
 func (d RepoDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
-	repo, ok := item.(uxtypes.RepoItem)
+	repo, ok := item.(models.RepoItem)
 	if !ok || repo.IsGit {
 		d.Base.Render(w, m, index, item)
 

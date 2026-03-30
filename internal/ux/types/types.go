@@ -4,13 +4,13 @@ package types
 import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/config"
-	"github.com/fredbi/git-janitor/internal/git"
-	"github.com/fredbi/git-janitor/internal/github"
+	"github.com/fredbi/git-janitor/internal/engine"
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 // Theme defines the color palette for the entire UI.
 type Theme struct {
-	Name string
+	ThemeName string
 
 	// Primary accent (left panel, wizard highlights).
 	Accent lipgloss.Color
@@ -46,45 +46,29 @@ type Theme struct {
 	ActionsAccent lipgloss.Color
 }
 
+func (th Theme) Name() string {
+	return th.ThemeName
+}
+
 // CurrentTheme is the active theme, accessed by all panels for rendering.
 var CurrentTheme *Theme //nolint:gochecknoglobals
 
 // RepoInfoMsg is sent when background git inspection completes.
+//
+// It consolidates repo information from different sources (e.g. git, github).
 type RepoInfoMsg struct {
-	Info git.RepoInfo
+	Info *engine.RepoInfo
 }
 
 // RepoRefreshMsg is sent after a fetch + re-inspect completes.
 type RepoRefreshMsg struct {
-	Info git.RepoInfo
+	Info *engine.RepoInfo
 }
-
-// RepoItem represents a repository entry in the list.
-type RepoItem struct {
-	Path  string
-	Name  string
-	IsGit bool // true if a .git directory was found
-}
-
-// Title implements the list.DefaultItem interface.
-func (i RepoItem) Title() string {
-	if !i.IsGit {
-		return i.Name + " (not git)"
-	}
-
-	return i.Name
-}
-
-// Description implements the list.DefaultItem interface.
-func (i RepoItem) Description() string { return i.Path }
-
-// FilterValue implements the list.Item interface.
-func (i RepoItem) FilterValue() string { return i.Name }
 
 // ScanResultMsg is sent when a background scan completes.
 type ScanResultMsg struct {
 	// ReposByRoot maps root index → discovered repos for that root.
-	ReposByRoot map[int][]RepoItem
+	ReposByRoot map[int][]models.RepoItem
 	Err         error
 }
 
@@ -102,7 +86,16 @@ type CommandResult struct {
 type ExecuteActionMsg struct {
 	RepoPath   string
 	ActionName string
-	Subjects   []string
+	Subjects   []models.ActionSubject
+}
+
+func (m ExecuteActionMsg) SubjectLabels() []string {
+	names := make([]string, 0, len(m.Subjects))
+	for _, subject := range m.Subjects {
+		names = append(names, subject.Subject)
+	}
+
+	return names
 }
 
 // ActionResultMsg is sent when an action execution completes.
@@ -127,5 +120,5 @@ type CopyToClipboardMsg struct {
 // GitHubInfoMsg is sent when background GitHub API fetch completes.
 type GitHubInfoMsg struct {
 	RepoPath string
-	Data     *github.RepoData
+	Data     *engine.RepoInfo
 }

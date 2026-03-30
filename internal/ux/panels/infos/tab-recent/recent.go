@@ -6,28 +6,28 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// RecentItem represents a recent activity entry in the list.
-type RecentItem struct {
+// item represents a recent activity entry in the list.
+type item struct {
 	title string
 	desc  string
 }
 
-func (i RecentItem) Title() string       { return i.title }
-func (i RecentItem) Description() string { return i.desc }
-func (i RecentItem) FilterValue() string { return i.title }
+func (i item) Title() string       { return i.title }
+func (i item) Description() string { return i.desc }
+func (i item) FilterValue() string { return i.title }
 
-// RecentPanel wraps a bubbles/list for the recent-activity tab.
-type RecentPanel struct {
+// Panel wraps a bubbles/list for the recent-activity tab.
+type Panel struct {
 	List list.Model
 }
 
-// New creates a new RecentPanel with sample entries.
-func New() RecentPanel {
+// New creates a new Panel with sample entries.
+func New() Panel {
 	items := []list.Item{
-		RecentItem{title: "Deleted feature/old-login", desc: "2 minutes ago — stale branch removed"},
-		RecentItem{title: "Ran git gc", desc: "10 minutes ago — freed 24 MB"},
-		RecentItem{title: "Pruned origin/stale-ref", desc: "1 hour ago — remote ref cleaned"},
-		RecentItem{title: "Deleted fix/typo-readme", desc: "1 hour ago — merged branch removed"},
+		item{title: "Deleted feature/old-login", desc: "2 minutes ago — stale branch removed"},
+		item{title: "Ran git gc", desc: "10 minutes ago — freed 24 MB"},
+		item{title: "Pruned origin/stale-ref", desc: "1 hour ago — remote ref cleaned"},
+		item{title: "Deleted fix/typo-readme", desc: "1 hour ago — merged branch removed"},
 	}
 
 	delegate := list.NewDefaultDelegate()
@@ -43,20 +43,20 @@ func New() RecentPanel {
 	l.SetShowHelp(false)
 	l.SetShowStatusBar(false)
 
-	return RecentPanel{List: l}
+	return Panel{List: l}
 }
 
-func (p *RecentPanel) SetSize(w, h int) {
+func (p *Panel) SetSize(w, h int) {
 	p.List.SetSize(w, h)
 }
 
-func (p *RecentPanel) Update(msg tea.Msg) tea.Cmd {
+func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	p.List, cmd = p.List.Update(msg)
 
 	return cmd
 }
 
-func (p *RecentPanel) View() string {
+func (p *Panel) View() string {
 	return p.List.View()
 }

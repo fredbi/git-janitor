@@ -6,49 +6,49 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fredbi/git-janitor/internal/git"
-	"github.com/fredbi/git-janitor/internal/ux/types"
+	"github.com/fredbi/git-janitor/internal/engine"
+	git "github.com/fredbi/git-janitor/internal/git/backend"
+	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
-// BranchesPanel displays the branches for the selected repository.
-type BranchesPanel struct {
-	Info   *git.RepoInfo
+// Panel displays the branches for the selected repository.
+type Panel struct {
+	Info   *engine.RepoInfo
 	Cursor int
 	Offset int // scroll offset
 	Width  int
 	Height int
 }
 
-// New creates a new BranchesPanel.
-func New() BranchesPanel {
-	return BranchesPanel{}
+// New creates a new Panel.
+func New() Panel {
+	return Panel{}
 }
 
-func (p *BranchesPanel) SetInfo(info *git.RepoInfo) {
+func (p *Panel) SetInfo(info *engine.RepoInfo) {
 	p.Info = info
 	p.Cursor = 0
 	p.Offset = 0
 }
 
-func (p *BranchesPanel) SetSize(w, h int) {
+func (p *Panel) SetSize(w, h int) {
 	p.Width = w
-	p.Height = h - 1 // reserve 1 line for header
-	if p.Height < 1 {
-		p.Height = 1
-	}
+	p.Height = max(
+		// reserve 1 line for header
+		h-1, 1)
 }
 
-func (p *BranchesPanel) Update(msg tea.Msg) tea.Cmd {
+func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return nil
 	}
 
-	if p.Info == nil {
+	if p.Info.IsEmpty() {
 		return nil
 	}
 
-	n := len(p.Info.Branches)
+	n := len(p.Info.GitInfo.Branches)
 
 	switch km.String() {
 	case "up", "k":
@@ -72,36 +72,34 @@ func (p *BranchesPanel) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (p *BranchesPanel) clampScroll() {
-	if p.Cursor < p.Offset {
-		p.Offset = p.Cursor
-	}
+const (
+	hashW   = 10
+	gap     = 2
+	gaps    = 3 * gap // 2+2+2 gaps
+	minName = 12
+	reserve = 10
+)
 
-	if p.Cursor >= p.Offset+p.Height {
-		p.Offset = p.Cursor - p.Height + 1
-	}
-}
-
-func (p *BranchesPanel) View() string {
-	if p.Info == nil {
-		return lipgloss.NewStyle().Foreground(types.CurrentTheme.Dim).
+func (p *Panel) View() string {
+	if p.Info.IsEmpty() {
+		return lipgloss.NewStyle().Foreground(uxtypes.CurrentTheme.Dim).
 			Render("  Select a repository to view its branches.")
 	}
 
-	if p.Info.Err != nil {
-		warnStyle := lipgloss.NewStyle().Foreground(types.CurrentTheme.Warning)
+	if err := p.Info.Err(); err != nil {
+		warnStyle := lipgloss.NewStyle().Foreground(uxtypes.CurrentTheme.Warning)
 
-		return warnStyle.Render(fmt.Sprintf("  Error: %v", p.Info.Err))
+		return warnStyle.Render(fmt.Sprintf("  Error: %v", err))
 	}
 
-	branches := p.Info.Branches
+	branches := p.Info.GitInfo.Branches
 	if len(branches) == 0 {
-		return lipgloss.NewStyle().Foreground(types.CurrentTheme.Dim).
+		return lipgloss.NewStyle().Foreground(uxtypes.CurrentTheme.Dim).
 			Render("  No branches found.")
 	}
 
 	// Styles.
-	t := types.CurrentTheme
+	t := uxtypes.CurrentTheme
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(t.Bright).Background(t.SelectedBg)
 	currentStyle := lipgloss.NewStyle().Foreground(t.Success)
@@ -112,21 +110,15 @@ func (p *BranchesPanel) View() string {
 	// Compute column widths.
 	// Layout: 2 (marker) + nameW + 2 (gap) + 10 (hash) + 2 (gap) + upstream
 	// Reserve at least 10 chars for upstream display.
-	const hashW = 10
-	const gaps = 6  // 2+2+2 gaps
-	const minName = 12
 
 	nameW := minName
 	for _, b := range branches {
-		if len(b.Name)+2 > nameW {
-			nameW = len(b.Name) + 2
+		if len(b.Name)+gap > nameW {
+			nameW = len(b.Name) + gap
 		}
 	}
 
-	maxNameW := p.Width - hashW - gaps - 10
-	if maxNameW < minName {
-		maxNameW = minName
-	}
+	maxNameW := max(p.Width-hashW-gaps-reserve, minName)
 
 	if nameW > maxNameW {
 		nameW = maxNameW
@@ -134,7 +126,7 @@ func (p *BranchesPanel) View() string {
 
 	// Header.
 	nameCol := lipgloss.NewStyle().Width(nameW)
-	hashCol := lipgloss.NewStyle().Width(10)
+	hashCol := lipgloss.NewStyle().Width(hashW)
 
 	header := fmt.Sprintf("  %s  %s  %s",
 		nameCol.Render(headerStyle.Render("Branch")),
@@ -143,10 +135,7 @@ func (p *BranchesPanel) View() string {
 	)
 
 	// Rows.
-	end := p.Offset + p.Height
-	if end > len(branches) {
-		end = len(branches)
-	}
+	end := min(p.Offset+p.Height, len(branches))
 
 	var rows []string
 
@@ -169,7 +158,17 @@ func (p *BranchesPanel) View() string {
 	return header + "\n" + strings.Join(rows, "\n")
 }
 
-func (p *BranchesPanel) renderBranch(
+func (p *Panel) clampScroll() {
+	if p.Cursor < p.Offset {
+		p.Offset = p.Cursor
+	}
+
+	if p.Cursor >= p.Offset+p.Height {
+		p.Offset = p.Cursor - p.Height + 1
+	}
+}
+
+func (p *Panel) renderBranch(
 	b git.Branch,
 	nameW int,
 	nameCol, hashCol lipgloss.Style,
@@ -191,8 +190,8 @@ func (p *BranchesPanel) renderBranch(
 	}
 
 	hash := b.Hash
-	if len(hash) > 8 {
-		hash = hash[:8]
+	if len(hash) > hashW {
+		hash = hash[:hashW]
 	}
 
 	upstream := b.Upstream
@@ -200,7 +199,7 @@ func (p *BranchesPanel) renderBranch(
 		upstream = dimStyle.Render("-")
 	} else {
 		// Truncate upstream to remaining width.
-		maxUpstream := p.Width - nameW - 16 // hash(10) + gaps(6)
+		maxUpstream := p.Width - nameW - hashW - gaps // hash(10) + gaps(6)
 		if maxUpstream > 0 && len(upstream) > maxUpstream {
 			upstream = upstream[:maxUpstream-1] + "\u2026"
 		}

@@ -10,6 +10,8 @@ import (
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
+// TODO: colorize status message when errors (e.g. red) or warning (e.g. orange)
+
 // TickMsg is sent to animate the progress bar.
 type TickMsg struct{}
 
@@ -38,8 +40,10 @@ func New() StatusBar {
 
 // SetSize updates the width of the status bar.
 func (s *StatusBar) SetSize(w int) {
+	const barPadding = 4
+
 	s.Width = w
-	s.progress.Width = w - 4 // padding
+	s.progress.Width = w - barPadding // padding
 }
 
 // SetMessage updates the displayed message and hides the progress bar.
@@ -47,6 +51,11 @@ func (s *StatusBar) SetMessage(msg string) {
 	s.Message = msg
 	s.active = false
 	s.percent = 0
+}
+
+func (s *StatusBar) SetMessagef(msg string, args ...any) {
+	formatted := fmt.Sprintf(msg, args...)
+	s.SetMessage(formatted)
 }
 
 // StartProgress shows the progress bar with the given label.
@@ -62,6 +71,10 @@ func (s *StatusBar) StartProgress(label string) tea.Cmd {
 // Update handles progress animation messages.
 // Returns true if the message was consumed.
 func (s *StatusBar) Update(msg tea.Msg) (tea.Cmd, bool) {
+	const (
+		maxAsymptotic = 0.95
+		progressRate  = 0.08
+	)
 	if !s.active {
 		return nil, false
 	}
@@ -70,30 +83,26 @@ func (s *StatusBar) Update(msg tea.Msg) (tea.Cmd, bool) {
 	case TickMsg:
 		// Advance the progress bar. It never reaches 1.0 —
 		// it slows down asymptotically until StopProgress is called.
-		s.percent += (1.0 - s.percent) * 0.08
-		if s.percent > 0.95 {
-			s.percent = 0.95
-		}
+		s.percent += (1.0 - s.percent) * progressRate
+		s.percent = min(maxAsymptotic, s.percent)
 
 		return s.tick(), true
 
 	case progress.FrameMsg:
 		var cmd tea.Cmd
 		m, c := s.progress.Update(msg)
-		s.progress = m.(progress.Model)
+		var ok bool
+		s.progress, ok = m.(progress.Model)
+		if !ok {
+			return nil, false
+		}
+
 		cmd = c
 
 		return cmd, true
 	}
 
 	return nil, false
-}
-
-func (s *StatusBar) tick() tea.Cmd {
-	return tea.Tick(
-		80_000_000, // 80ms
-		func(_ time.Time) tea.Msg { return TickMsg{} },
-	)
 }
 
 // View renders the status bar or progress bar.
@@ -138,4 +147,12 @@ func (s *StatusBar) viewProgress(t *uxtypes.Theme) string {
 		Render(fmt.Sprintf("%s %s", label, bar))
 
 	return row
+}
+
+func (s *StatusBar) tick() tea.Cmd {
+	const eightyMs = 80_000_000
+	return tea.Tick(
+		eightyMs,
+		func(_ time.Time) tea.Msg { return TickMsg{} },
+	)
 }
