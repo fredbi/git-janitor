@@ -32,6 +32,10 @@ type RepoInfo struct {
 	LastSemverTag  string    // latest semver tag by version ordering
 	LastSemverDate time.Time // date of LastSemverTag
 
+	// Cache metadata.
+	CollectedAt  time.Time    // when this info was last collected (for cache TTL)
+	CollectLevel CollectLevel // fast or full (for cache validity)
+
 	// Git diagnostics (optional, nil when not collected).
 	Health    *HealthReport
 	Size      *RepoSize

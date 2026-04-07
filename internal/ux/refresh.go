@@ -48,7 +48,7 @@ func (m *Model) fullRepoCheck(pth string) tea.Cmd {
 	rootIndex := m.SelectedRoot
 
 	return func() tea.Msg {
-		info := m.Engine.Collect(context.Background(), models.NewRepoInfoForRoot(pth, rootIndex))
+		info := m.Engine.Collect(context.Background(), models.NewRepoInfoForRoot(pth, rootIndex), models.CollectForceRefresh)
 
 		return uxtypes.RepoInfoMsg{
 			Info: info,

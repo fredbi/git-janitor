@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/google/go-github/v72 v72.0.0
+	go.etcd.io/bbolt v1.4.3
 	go.yaml.in/yaml/v3 v3.0.4
 )
 

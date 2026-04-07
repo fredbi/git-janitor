@@ -3,6 +3,7 @@ package ifaces
 import (
 	"context"
 	"iter"
+	"time"
 
 	"github.com/fredbi/git-janitor/internal/config"
 	"github.com/fredbi/git-janitor/internal/models"
@@ -40,6 +41,10 @@ type Engineer interface {
 	// Refresh fetches from remotes then re-collects repo info.
 	// The info parameter must be non-nil and must have Path set.
 	Refresh(ctx context.Context, info *models.RepoInfo) *models.RepoInfo
+
+	// RecentHistory returns action history entries for the given repo
+	// with timestamps after the since cutoff, newest first.
+	RecentHistory(repoPath string, since time.Time) []models.HistoryEntry
 
 	// Reload config and sets checks configured for individual roots & repos.
 	Reload(cfg *config.Config)

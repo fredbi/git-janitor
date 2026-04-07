@@ -18,8 +18,6 @@ import (
 
 var _ ifaces.Engineer = &Interactive{}
 
-const defaultHistoryCapacity = 500
-
 // Interactive engine is an [ifaces.Engineer] that runs checks and actions
 // following user interactions.
 //
@@ -28,17 +26,15 @@ const defaultHistoryCapacity = 500
 type Interactive struct {
 	options
 
-	history *History
-
 	// githubClient is lazily initialized on first use.
 	// nil means not yet initialized (not that GitHub is unavailable).
 	githubClient *githubbackend.Client
 }
 
+// NewInteractive creates a new Interactive engine.
 func NewInteractive(opts ...Option) *Interactive {
 	return &Interactive{
 		options: optionsWithDefaults(opts),
-		history: NewHistory(defaultHistoryCapacity),
 	}
 }
 
@@ -127,7 +123,7 @@ func (e *Interactive) Execute(ctx context.Context, info *models.RepoInfo, sugges
 	result, err := action.Execute(ctx, info, subjects)
 
 	// Record in history regardless of success/failure.
-	e.history.Append(HistoryEntry{
+	e.appendHistory(models.HistoryEntry{
 		Timestamp:  time.Now(),
 		RepoPath:   info.Path,
 		ActionName: suggestion.ActionName,
@@ -153,12 +149,31 @@ func (e *Interactive) GetAction(name string) (ifaces.Action, bool) { //nolint:ir
 // When info only has Path set, it performs a git collection.
 // When CollectPlatform is requested, it fetches hosting-platform metadata
 // (if the repo is on a supported platform and the config allows it).
+//
+// Results are cached in the persistent store (if configured). Subsequent
+// calls for the same repo path return the cached data until the TTL expires.
+// Use [models.CollectForceRefresh] to bypass the cache.
 func (e *Interactive) Collect(ctx context.Context, info *models.RepoInfo, opts ...models.CollectOption) *models.RepoInfo {
 	if info == nil {
 		return nil
 	}
 
 	hasOpt := makeOptSet(opts)
+
+	// Cache lookup (skip if ForceRefresh or if info already has git data).
+	if !hasOpt[models.CollectForceRefresh] && !info.IsGit && info.Path != "" {
+		requireFull := !hasOpt[models.CollectFast]
+		if cached := e.cacheGet(info.Path, requireFull); cached != nil {
+			cached.RootIndex = info.RootIndex
+
+			// Still do platform collection if requested (platform has its own in-memory cache).
+			if hasOpt[models.CollectPlatform] {
+				return e.collectPlatform(ctx, cached, hasOpt)
+			}
+
+			return cached
+		}
+	}
 
 	// Git collection: when info has no git data yet.
 	if !info.IsGit && info.Path != "" {
@@ -167,13 +182,21 @@ func (e *Interactive) Collect(ctx context.Context, info *models.RepoInfo, opts .
 		var collected *models.RepoInfo
 		if hasOpt[models.CollectFast] {
 			collected = runner.CollectRepoInfoFast(ctx)
+			collected.CollectLevel = models.CollectLevelFast
 		} else {
 			collected = runner.CollectRepoInfo(ctx)
+			collected.CollectLevel = models.CollectLevelFull
 		}
 
 		collected.RootIndex = info.RootIndex
+		collected.CollectedAt = time.Now()
 
 		info = collected
+
+		// Cache the result (only if no fatal error).
+		if info.Err == nil {
+			e.cachePut(info)
+		}
 	}
 
 	// Platform collection: when explicitly requested.
@@ -185,6 +208,7 @@ func (e *Interactive) Collect(ctx context.Context, info *models.RepoInfo, opts .
 }
 
 // Refresh fetches from remotes then re-collects full repo info.
+// The result always bypasses and overwrites the cache.
 func (e *Interactive) Refresh(ctx context.Context, info *models.RepoInfo) *models.RepoInfo {
 	if info == nil || info.Path == "" {
 		return info
@@ -193,6 +217,13 @@ func (e *Interactive) Refresh(ctx context.Context, info *models.RepoInfo) *model
 	runner := gitbackend.NewRunner(info.Path)
 	refreshed := runner.RefreshRepo(ctx)
 	refreshed.RootIndex = info.RootIndex
+	refreshed.CollectedAt = time.Now()
+	refreshed.CollectLevel = models.CollectLevelFull
+
+	// Overwrite the cache with fresh data.
+	if refreshed.Err == nil {
+		e.cachePut(refreshed)
+	}
 
 	return refreshed
 }
@@ -200,11 +231,6 @@ func (e *Interactive) Refresh(ctx context.Context, info *models.RepoInfo) *model
 // Reload updates the engine's configuration.
 func (e *Interactive) Reload(cfg *config.Config) {
 	e.cfg = cfg
-}
-
-// History returns the engine's action history.
-func (e *Interactive) History() *History {
-	return e.history
 }
 
 // collectPlatform fetches hosting-platform metadata if applicable.

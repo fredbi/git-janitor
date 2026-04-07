@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -18,6 +19,8 @@ import (
 	recent "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-recent"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
+
+const recentHistoryWindow = 30 * 24 * time.Hour // 30 days
 
 // RightTab identifies which tab is active in the right Pane.
 type RightTab int
@@ -79,6 +82,12 @@ func (p *Panel) SetTheme(theme *uxtypes.Theme) {
 	p.Recent.Theme = theme
 }
 
+// RefreshRecent updates the Recent tab with latest history for the current repo.
+// Called after action execution to pick up the new entry.
+func (p *Panel) RefreshRecent() {
+	p.refreshRecent(p.RepoPath)
+}
+
 // CycleTab advances the active tab forward by one.
 func (p *Panel) CycleTab() {
 	p.Active = RightTab((int(p.Active) + 1) % RightTabCount)
@@ -131,6 +140,9 @@ func (p *Panel) SetRepoInfo(info *models.RepoInfo) {
 
 	p.LastAlerts = slices.AppendSeq(p.LastAlerts, alertsIter)
 	p.Alerts.SetAlerts(p.LastAlerts)
+
+	// Populate Recent tab with history for this repo.
+	p.refreshRecent(info.Path)
 }
 
 // SetGitHubData updates the panel with GitHub API data.
@@ -303,6 +315,18 @@ func (p *Panel) View(focused bool) string {
 		Height(p.Height - 2)
 
 	return border.Render(inner)
+}
+
+func (p *Panel) refreshRecent(repoPath string) {
+	if p.Engine == nil || repoPath == "" {
+		p.Recent.SetHistory(nil)
+
+		return
+	}
+
+	since := time.Now().Add(-recentHistoryWindow)
+	entries := p.Engine.RecentHistory(repoPath, since)
+	p.Recent.SetHistory(entries)
 }
 
 // truncateLines keeps at most maxLines lines from s.

@@ -133,3 +133,15 @@ type EvaluateOption uint8
 const (
 	EvaluateAll EvaluateOption = iota
 )
+
+// CollectLevel indicates the depth of data collection performed.
+type CollectLevel uint8
+
+const (
+	// CollectLevelFast is a quick collection that skips expensive operations
+	// (fsck, file stats, health, merge/rebase checks, activity).
+	CollectLevelFast CollectLevel = iota
+
+	// CollectLevelFull is a complete collection with all diagnostics.
+	CollectLevelFull
+)

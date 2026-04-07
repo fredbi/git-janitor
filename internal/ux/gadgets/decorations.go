@@ -1,6 +1,9 @@
 package gadgets
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -26,6 +29,38 @@ func DestructiveWarning() string {
 	return "⚠️  Run DESTRUCTIVE"
 }
 
+// TimeAgo returns a human-readable relative time string.
+func TimeAgo(t time.Time) string {
+	d := time.Since(t)
+
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		m := int(d.Minutes())
+		if m == 1 {
+			return "1 min ago"
+		}
+
+		return fmt.Sprintf("%d min ago", m)
+	case d < 24*time.Hour:
+		h := int(d.Hours())
+		if h == 1 {
+			return "1 hour ago"
+		}
+
+		return fmt.Sprintf("%d hours ago", h)
+	default:
+		days := int(d.Hours() / 24) //nolint:mnd // 24 hours per day
+		if days == 1 {
+			return "1 day ago"
+		}
+
+		return fmt.Sprintf("%d days ago", days)
+	}
+}
+
+// ElideLongLabel truncates a string to maxWidth, appending "..." if needed.
 func ElideLongLabel(str string) string {
 	const (
 		maxWidth = 40

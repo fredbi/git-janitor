@@ -687,6 +687,9 @@ func (m *Model) handleActionResult(msg uxtypes.ActionResultMsg) (tea.Model, tea.
 		m.Status.SetMessagef("✗ %s: %s", msg.ActionName, msg.Message)
 	}
 
+	// Immediately refresh the Recent panel so the new action appears.
+	m.Right.RefreshRecent()
+
 	// Re-collect repo info (full, not fast) to reflect changes and re-evaluate alerts.
 	if msg.RepoPath == m.SelectedRepo {
 		return m, m.fullRepoCheck(msg.RepoPath)

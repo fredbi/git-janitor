@@ -12,6 +12,7 @@ import (
 	"github.com/fredbi/git-janitor/internal/github"
 	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/registry"
+	"github.com/fredbi/git-janitor/internal/store/bolt"
 	"github.com/fredbi/git-janitor/internal/ux"
 	"github.com/fredbi/git-janitor/internal/ux/themes"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
@@ -39,6 +40,18 @@ func main() {
 		return
 	}
 
+	// Open persistent store for caching and history (non-fatal on error).
+	kvStore, err := bolt.OpenDefault()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: store disabled: %v\n", app, err)
+	}
+
+	if kvStore != nil {
+		defer func() {
+			_ = kvStore.Close()
+		}()
+	}
+
 	// registers all supported checks
 	checks := registry.New[ifaces.Check](
 		registry.With(git.AllChecks(), github.AllChecks()),
@@ -59,6 +72,7 @@ func main() {
 				engine.WithConfig(cfg),
 				engine.WithChecks(checks),
 				engine.WithActions(actions),
+				engine.WithStore(kvStore),
 			),
 		),
 	)
