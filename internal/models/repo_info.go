@@ -46,7 +46,12 @@ type RepoInfo struct {
 	Activity  *Activity
 
 	// Platform metadata (optional, nil when not collected).
+	// Platform is collected from the origin remote.
 	Platform *PlatformInfo
+
+	// UpstreamPlatform is collected from the upstream remote (if present).
+	// Used by fork-aware checks that need data about the user's fork.
+	UpstreamPlatform *PlatformInfo
 
 	// Errors.
 	Err      error // fatal collection error

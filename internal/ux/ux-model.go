@@ -59,6 +59,10 @@ type Model struct {
 	// PendingAction holds an action awaiting user confirmation (Y/N).
 	// nil when no confirmation is pending.
 	PendingAction *uxtypes.ExecuteActionMsg
+
+	// forceGitHubRefresh is set after action execution to force a GitHub
+	// re-fetch on the next handleRepoInfo cycle (avoids using stale data).
+	forceGitHubRefresh bool
 }
 
 // New creates the initial state for the TUI app.
@@ -680,7 +684,11 @@ func (m *Model) handleRepoInfo(msg uxtypes.RepoInfoMsg) (tea.Model, tea.Cmd) {
 	m.Right.SetRepoInfo(info) // TODO: m.Cfg.EnabledChecks(m.SelectedRoot)) // TODO: filter config w/ built-in
 
 	// Trigger async GitHub fetch if applicable.
-	cmd := m.triggerGitHubFetch(info, false)
+	// Force refresh if a recent action execution set the flag.
+	forceRefresh := m.forceGitHubRefresh
+	m.forceGitHubRefresh = false
+
+	cmd := m.triggerGitHubFetch(info, forceRefresh)
 
 	return m, cmd
 }
@@ -722,11 +730,11 @@ func (m *Model) handleGitHubInfo(msg uxtypes.GitHubInfoMsg) (tea.Model, tea.Cmd)
 		return m, nil
 	}
 
-	if msg.Data.Platform == nil {
+	if msg.Data.Platform == nil && msg.Data.UpstreamPlatform == nil {
 		return m, nil
 	}
 
-	if msg.Data.Platform.Err != nil {
+	if msg.Data.Platform != nil && msg.Data.Platform.Err != nil {
 		m.Status.SetMessage("GitHub: " + msg.Data.Platform.Err.Error())
 	}
 
@@ -772,16 +780,13 @@ func (m *Model) handleActionResult(msg uxtypes.ActionResultMsg) (tea.Model, tea.
 	m.Right.RefreshRecent()
 
 	// Re-collect repo info (full, not fast) to reflect changes and re-evaluate alerts.
+	// The resulting RepoInfoMsg will trigger a GitHub re-fetch via handleRepoInfo.
+	// We don't fire triggerGitHubFetch here because m.LastRepoInfo is stale —
+	// it still has the pre-action state. handleRepoInfo will use the fresh data.
 	if msg.RepoPath == m.SelectedRepo {
-		cmds := []tea.Cmd{m.fullRepoCheck(msg.RepoPath)}
+		m.forceGitHubRefresh = m.LastRepoInfo != nil && m.LastRepoInfo.Platform != nil
 
-		// After a GitHub action, force-refresh platform data so alerts
-		// reflect the updated state (e.g. description just set).
-		if m.LastRepoInfo != nil && m.LastRepoInfo.Platform != nil {
-			cmds = append(cmds, m.triggerGitHubFetch(m.LastRepoInfo, true))
-		}
-
-		return m, tea.Batch(cmds...)
+		return m, m.fullRepoCheck(msg.RepoPath)
 	}
 
 	return m, nil

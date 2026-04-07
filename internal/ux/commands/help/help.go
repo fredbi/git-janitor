@@ -136,6 +136,14 @@ Press Esc or Ctrl+H to close.  /help for general help.
   path, kind, SCM, last commit, branch, upstream,
   working tree status, remotes, stashes.
 
+  When the repo is hosted on GitHub, additional metadata
+  is shown (description, stars, forks, security alerts, etc.).
+
+  GitHub integration requires a token:
+    export GH_TOKEN=ghp_...       (or GITHUB_TOKEN)
+  The token needs read access to repos. Fine-grained tokens work.
+  GitHub checks can be disabled in config (github.enabled: false).
+
   Navigation:
     j / k  or  ↑ / ↓  Scroll content
     g / G              Jump to top / bottom

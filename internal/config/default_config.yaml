@@ -46,6 +46,9 @@ defaults:
       - name: github-visibility-private
       - name: github-repo-fork-parent
       - name: github-security-alerts
+      - name: github-branch-protection-missing
+      - name: github-delete-branch-on-merge
+      - name: github-fork-actions-enabled
       # Expensive / opt-in (uncomment or enable per-root):
       # - name: github-issues-unresponded
       # - name: github-prs-pending-review
@@ -80,6 +83,15 @@ defaults:
         auto: false
       # Clone management
       - name: delete-local-clone
+        auto: false
+      # GitHub actions
+      - name: set-repo-description
+        auto: false
+      - name: enable-branch-protection
+        auto: false
+      - name: enable-delete-branch-on-merge
+        auto: false
+      - name: disable-fork-actions
         auto: false
       # Browser
       - name: open-in-browser

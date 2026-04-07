@@ -19,5 +19,8 @@ func AllChecks() iter.Seq[ifaces.Check] {
 		checks.NewRepoForkParent(),
 		checks.NewSecurityNotEnabled(),
 		checks.NewSecurityAlerts(),
+		checks.NewBranchProtectionMissing(),
+		checks.NewDeleteBranchOnMergeMissing(),
+		checks.NewForkActionsEnabled(),
 	})
 }

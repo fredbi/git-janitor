@@ -17,5 +17,8 @@ func AllActions() iter.Seq[ifaces.Action] {
 	return slices.Values([]ifaces.Action{
 		actions.NewSetRepoDescription(),
 		actions.NewOpenInBrowser(),
+		actions.NewEnableBranchProtection(),
+		actions.NewEnableDeleteBranchOnMerge(),
+		actions.NewDisableForkActions(),
 	})
 }

@@ -53,6 +53,10 @@ type Engineer interface {
 	// with timestamps after the since cutoff, newest first.
 	RecentHistory(repoPath string, since time.Time) []models.HistoryEntry
 
+	// ProviderEnabled reports whether a named provider (e.g. "github") is
+	// available — config enabled AND credentials present.
+	ProviderEnabled(provider string) bool
+
 	// Reload config and sets checks configured for individual roots & repos.
 	Reload(cfg *config.Config)
 }

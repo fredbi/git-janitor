@@ -109,6 +109,57 @@ func (c *Client) SetDescription(ctx context.Context, owner, repo, description st
 	return err
 }
 
+// EnableBranchProtection sets a minimal branch protection rule on the given branch:
+// requires at least one pull request review before merging.
+func (c *Client) EnableBranchProtection(ctx context.Context, owner, repo, branch string) error {
+	if !c.available {
+		return errors.New("github: no token available")
+	}
+
+	req := &gogithub.ProtectionRequest{
+		RequiredPullRequestReviews: &gogithub.PullRequestReviewsEnforcementRequest{
+			RequiredApprovingReviewCount: 1,
+		},
+		EnforceAdmins: false,
+	}
+
+	_, resp, err := c.gh.Repositories.UpdateBranchProtection(ctx, owner, repo, branch, req)
+	c.updateRate(resp)
+
+	return err
+}
+
+// EnableDeleteBranchOnMerge enables the "Automatically delete head branches"
+// setting on the given repository.
+func (c *Client) EnableDeleteBranchOnMerge(ctx context.Context, owner, repo string) error {
+	if !c.available {
+		return errors.New("github: no token available")
+	}
+
+	t := true
+	_, resp, err := c.gh.Repositories.Edit(ctx, owner, repo, &gogithub.Repository{
+		DeleteBranchOnMerge: &t,
+	})
+	c.updateRate(resp)
+
+	return err
+}
+
+// DisableActions disables GitHub Actions on the given repository.
+func (c *Client) DisableActions(ctx context.Context, owner, repo string) error {
+	if !c.available {
+		return errors.New("github: no token available")
+	}
+
+	f := false
+	_, resp, err := c.gh.Repositories.EditActionsPermissions(ctx, owner, repo, gogithub.ActionsPermissionsRepository{
+		Enabled: &f,
+	})
+	c.updateRate(resp)
+
+	return err
+}
+
 // Fetch retrieves GitHub repo data, using the cache unless ForceRefresh is true.
 func (c *Client) Fetch(ctx context.Context, owner, repo string, opts FetchOptions) *models.PlatformInfo {
 	if !c.available {

@@ -128,6 +128,11 @@ var RightTabDefs = []struct { //nolint:gochecknoglobals // tab definition table
 // If an engine is configured, it evaluates checks and populates the alerts panel.
 func (p *Panel) SetRepoInfo(info *models.RepoInfo) {
 	p.RepoPath = info.Path
+
+	if p.Engine != nil {
+		p.Facts.GitHubEnabled = p.Engine.ProviderEnabled("github")
+	}
+
 	p.Facts.SetInfo(info)
 	p.Branches.SetInfo(info)
 	p.Stashes.SetInfo(info)

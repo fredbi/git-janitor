@@ -12,6 +12,7 @@ import (
 	"github.com/fredbi/git-janitor/internal/github"
 	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/registry"
+	"github.com/fredbi/git-janitor/internal/store"
 	"github.com/fredbi/git-janitor/internal/store/bolt"
 	"github.com/fredbi/git-janitor/internal/ux"
 	"github.com/fredbi/git-janitor/internal/ux/themes"
@@ -57,6 +58,12 @@ func main() {
 		defer func() {
 			_ = kvStore.Close()
 		}()
+
+		// Clear the RepoInfo cache on startup. The cache is a performance
+		// optimization; clearing it ensures no stale data from older binary
+		// versions persists (new fields would deserialize as zero values).
+		// History is preserved.
+		_ = kvStore.ClearBucket(store.BucketCache)
 	}
 
 	// registers all supported checks

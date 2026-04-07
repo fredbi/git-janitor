@@ -14,11 +14,12 @@ import (
 
 // Panel displays a quick recap of the selected repository's properties.
 type Panel struct {
-	Theme  *types.Theme
-	Info   *models.RepoInfo
-	Offset int // scroll offset
-	Width  int
-	Height int
+	Theme          *types.Theme
+	Info           *models.RepoInfo
+	GitHubEnabled  bool // whether the GitHub provider is available
+	Offset         int  // scroll offset
+	Width          int
+	Height         int
 }
 
 // New creates a new Panel.
@@ -125,6 +126,15 @@ func (p *Panel) buildLines() []string {
 	// Kind and SCM.
 	line("Kind:", info.Kind.String())
 	line("SCM:", info.SCM.String())
+
+	// GitHub indicator (only for GitHub-hosted repos).
+	if info.SCM == models.SCMGitHub {
+		if p.GitHubEnabled {
+			line("GitHub:", "☑ enabled")
+		} else {
+			line("GitHub:", dimStyle.Render("☐ disabled")+dimStyle.Render("  (set GH_TOKEN to enable)"))
+		}
+	}
 
 	// Remote status (shown when fetch failed).
 	if info.FetchErr != nil {
@@ -318,12 +328,60 @@ func (p *Panel) buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle lipgl
 	// Security alerts — per-scanner status.
 	lines = append(lines, p.buildSecurityLines(gh, labelStyle, valStyle, dimStyle, warnStyle)...)
 
+	// Branch protection.
+	line("Protected:", checkbox(gh.DefaultBranchProtected)+dimStyle.Render(" ("+gh.DefaultBranch+")"))
+
 	// Topics.
 	if len(gh.Topics) > 0 {
 		line("Topics:", strings.Join(gh.Topics, ", "))
 	}
 
+	// Fork-specific section: show data from whichever side is the fork.
+	// If origin is the fork, use origin's Platform.
+	// If upstream is the fork, use UpstreamPlatform.
+	fork := p.forkPlatform()
+	if fork != nil {
+		sep2 := dimStyle.Render("  ── GitHub (fork: " + fork.FullName + ") ──")
+		lines = append(lines, "", sep2)
+
+		line("Protected:", checkbox(fork.DefaultBranchProtected)+dimStyle.Render(" ("+fork.DefaultBranch+")"))
+		line("CI enabled:", checkbox(fork.ActionsEnabled))
+		line("Delete head:", checkbox(fork.DeleteBranchOnMerge))
+	}
+
 	return lines
+}
+
+// forkPlatform returns the PlatformInfo for the fork side of the relationship.
+// If origin is the fork, returns Platform. If upstream is the fork, returns UpstreamPlatform.
+// Returns nil if no fork relationship exists.
+func (p *Panel) forkPlatform() *models.PlatformInfo {
+	if p.Info == nil {
+		return nil
+	}
+
+	// Origin is the fork.
+	if p.Info.Platform != nil && p.Info.Platform.IsFork {
+		return p.Info.Platform
+	}
+
+	// Upstream is the fork.
+	if p.Info.UpstreamPlatform != nil && p.Info.UpstreamPlatform.IsFork {
+		return p.Info.UpstreamPlatform
+	}
+
+	return nil
+}
+
+func checkbox(val int) string {
+	switch {
+	case val > 0:
+		return "☑"
+	case val == 0:
+		return "☐"
+	default:
+		return "?"
+	}
 }
 
 // classifyEntries counts staged, unstaged, and untracked entries.

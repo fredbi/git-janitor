@@ -32,6 +32,21 @@ func simpleSubject(names ...string) []models.ActionSubject {
 	return subjects
 }
 
+// forkPlatform returns the PlatformInfo for the fork side of the relationship.
+// Checks Platform first (origin is the fork), then UpstreamPlatform (upstream is the fork).
+// Returns nil if no fork exists.
+func forkPlatform(info *models.RepoInfo) *models.PlatformInfo {
+	if info.Platform != nil && info.Platform.IsFork {
+		return info.Platform
+	}
+
+	if info.UpstreamPlatform != nil && info.UpstreamPlatform.IsFork {
+		return info.UpstreamPlatform
+	}
+
+	return nil
+}
+
 func repoSuggestion(action string, subjects []models.ActionSubject) models.ActionSuggestion {
 	return models.ActionSuggestion{
 		ActionName:  action,

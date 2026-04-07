@@ -28,6 +28,9 @@ type Store interface {
 	// It is not an error to delete a non-existent key.
 	Delete(bucket, key string) error
 
+	// ClearBucket removes all entries from the named bucket.
+	ClearBucket(bucket string) error
+
 	// Scan iterates over all key-value pairs in the named bucket whose
 	// keys start with the given prefix. Pairs are visited in sorted key order.
 	// The callback receives copies of key and value that are safe to retain.

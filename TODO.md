@@ -8,7 +8,7 @@
 
 # bugs
 
-* refresh cache after branches pushed?
+* ~refresh cache after branches pushed?~
 * [x] locked kv store
 * [x] diverged branches doesn't work (benchviz)
 * [x] action github set-repo-description: wrong runner type
@@ -34,6 +34,8 @@ other fields are a specialization for our panels
 Improvements:
 
 * [ ] UX: mini-form overlay in actions panel for per-subject parameter editing (branch name, commit message) before execution
+* [ ] action to repair default branch mismatch
+* [ ] detect "track-only clones" and impose shallow clone
 
 ## history
 
@@ -56,28 +58,28 @@ Improvements:
 
 ## github features
 
-* forks github: fix missing "delete head on merge" setup
+* [x] forks github: fix missing "delete head on merge" setup
+* [x] forks: disable CI
+* [x] branch protection rules
+* workflow failures
 * issues
 * PRs
 * dependabot PRs / successful CI / pending >3 days: suggestion comment @dependabot rebase
-* workflow failures
-* forks: disable CI
 * gists
 * keys?
 * old & large CI artifacts
-* branch protection rules
 
 ## ux
 
 * [x] new interaction for details (branches, stashes) (Enter)
-* indicator if github is disabled/enabled
-* help to mention GH_TOKEN variable to enable gihub 
+* [x] indicator if github is disabled/enabled
+* [x] help to mention GH_TOKEN variable to enable gihub 
 * is there a context associated to bubble components or should we always assume background?
 * self-update
 
 * new ux interactions in the details panel:
   * D : delete stash / branch
-  * R : rebase
+  * R : rebase (could also apply to stashes)
 
 ## quality
 

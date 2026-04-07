@@ -135,6 +135,20 @@ func (s *Store) Delete(bucket, key string) error {
 	})
 }
 
+// ClearBucket removes all entries from the named bucket by deleting and
+// recreating it.
+func (s *Store) ClearBucket(bucket string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		if err := tx.DeleteBucket([]byte(bucket)); err != nil {
+			return err
+		}
+
+		_, err := tx.CreateBucket([]byte(bucket))
+
+		return err
+	})
+}
+
 // Scan iterates over all key-value pairs whose keys start with the given prefix.
 // Pairs are visited in sorted key order. The callback receives copies safe to retain.
 func (s *Store) Scan(bucket, prefix string, fn func(key, value []byte) bool) error {

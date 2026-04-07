@@ -60,8 +60,8 @@ func (e *Interactive) Evaluate(
 			continue
 		}
 
-		// Skip GitHub checks if no platform data is available.
-		if check.Kind() == models.CheckKindGitHub && info.Platform == nil {
+		// Skip GitHub checks if no platform data is available (neither origin nor upstream).
+		if check.Kind() == models.CheckKindGitHub && info.Platform == nil && info.UpstreamPlatform == nil {
 			continue
 		}
 
@@ -303,6 +303,23 @@ func (e *Interactive) Refresh(ctx context.Context, info *models.RepoInfo) *model
 	return refreshed
 }
 
+// ProviderEnabled reports whether the named provider is available.
+// Currently supports "github" (config enabled + token present).
+func (e *Interactive) ProviderEnabled(provider string) bool {
+	switch provider {
+	case "github":
+		if !e.cfg.GitHub.Enabled {
+			return false
+		}
+
+		client := e.getGitHubClient()
+
+		return client != nil && client.Available()
+	default:
+		return false
+	}
+}
+
 // Reload updates the engine's configuration.
 func (e *Interactive) Reload(cfg *config.Config) {
 	e.cfg = cfg
@@ -347,6 +364,19 @@ func (e *Interactive) collectPlatform(ctx context.Context, info *models.RepoInfo
 		// Inject local default branch for cross-check.
 		platform.LocalDefaultBranch = info.DefaultBranch
 		info.Platform = platform
+	}
+
+	// Also collect upstream platform data if an upstream remote exists.
+	upstreamURL := models.UpstreamFetchURL(info.Remotes)
+	if upstreamURL != "" {
+		upOwner, upRepo, upErr := githubbackend.ExtractOwnerRepo(upstreamURL)
+		if upErr == nil {
+			upstream := client.Fetch(ctx, upOwner, upRepo, fetchOpts)
+			if upstream != nil {
+				upstream.LocalDefaultBranch = info.DefaultBranch
+				info.UpstreamPlatform = upstream
+			}
+		}
 	}
 
 	return info

@@ -55,6 +55,18 @@ type PlatformInfo struct {
 	// Token scopes (from X-OAuth-Scopes header). Empty for fine-grained tokens.
 	TokenScopes string
 
+	// Branch protection (-1 = not fetched, 0 = no protection, 1 = protected).
+	DefaultBranchProtected int
+
+	// DeleteBranchOnMerge tracks the "Automatically delete head branches" setting.
+	// For forks, this is checked on the parent (upstream) repo.
+	// -1 = not fetched, 0 = disabled, 1 = enabled.
+	DeleteBranchOnMerge int
+
+	// ActionsEnabled tracks whether GitHub Actions (CI) is enabled on the fork.
+	// -1 = not fetched, 0 = disabled, 1 = enabled.
+	ActionsEnabled int
+
 	// Cross-check field: injected from git data.
 	LocalDefaultBranch string
 
@@ -69,11 +81,14 @@ func NewPlatformInfo(owner, repo string) *PlatformInfo {
 		Owner:                owner,
 		Repo:                 repo,
 		FullName:             owner + "/" + repo,
-		UnrespondedIssues:    -1,
-		PendingReviewPRs:     -1,
-		DependabotAlerts:     -1,
-		CodeScanningAlerts:   -1,
-		SecretScanningAlerts: -1,
+		UnrespondedIssues:      -1,
+		PendingReviewPRs:       -1,
+		DependabotAlerts:       -1,
+		CodeScanningAlerts:     -1,
+		SecretScanningAlerts:   -1,
+		DefaultBranchProtected: -1,
+		DeleteBranchOnMerge:    -1,
+		ActionsEnabled:         -1,
 	}
 }
 

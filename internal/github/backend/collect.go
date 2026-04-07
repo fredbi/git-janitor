@@ -42,6 +42,12 @@ func collectRepoInfo(ctx context.Context, c *Client, owner, repo string, fetchSe
 		data.OpenIssues = max(data.OpenIssues-prCount, 0)
 	}
 
+	// Branch protection check (1 call, 404 = no protection).
+	collectBranchProtection(ctx, c, data)
+
+	// For forks: check if GitHub Actions (CI) is enabled on the fork itself.
+	collectActionsEnabled(ctx, c, data)
+
 	// Security alerts (up to 3 calls, 403 handled gracefully per-API).
 	if fetchSecurity {
 		CollectSecurityAlerts(ctx, c, data)
@@ -50,6 +56,32 @@ func collectRepoInfo(ctx context.Context, c *Client, owner, repo string, fetchSe
 	}
 
 	return data
+}
+
+// collectBranchProtection checks whether the default branch has protection rules.
+// Sets DefaultBranchProtected to 1 (protected) or 0 (not protected).
+// A 404 response means no protection rules exist.
+func collectBranchProtection(ctx context.Context, c *Client, data *models.PlatformInfo) {
+	if data.DefaultBranch == "" {
+		return
+	}
+
+	_, resp, err := c.gh.Repositories.GetBranchProtection(ctx, data.Owner, data.Repo, data.DefaultBranch)
+	c.updateRate(resp)
+
+	if err != nil {
+		// 404 = no protection rules. Other errors = can't determine.
+		if resp != nil && resp.StatusCode == 404 { //nolint:mnd // HTTP 404
+			data.DefaultBranchProtected = 0
+
+			return
+		}
+
+		// 403 or other error: leave as -1 (not fetched / no access).
+		return
+	}
+
+	data.DefaultBranchProtected = 1
 }
 
 func populateFromRepo(data *models.PlatformInfo, r *gogithub.Repository) {
@@ -84,6 +116,15 @@ func populateFromRepo(data *models.PlatformInfo, r *gogithub.Repository) {
 		data.HasAdminAccess = perms["admin"]
 		data.HasPushAccess = perms["push"]
 	}
+
+	// Delete-branch-on-merge is available directly from the repo response.
+	if r.DeleteBranchOnMerge != nil {
+		if r.GetDeleteBranchOnMerge() {
+			data.DeleteBranchOnMerge = 1
+		} else {
+			data.DeleteBranchOnMerge = 0
+		}
+	}
 }
 
 func countOpenPRs(ctx context.Context, c *Client, owner, repo string) (int, error) {
@@ -100,6 +141,27 @@ func countOpenPRs(ctx context.Context, c *Client, owner, repo string) (int, erro
 	}
 
 	return resp.LastPage, nil
+}
+
+// collectActionsEnabled checks whether GitHub Actions is enabled on the fork.
+// Only relevant for forks — CI on forks is often unnecessary and wasteful.
+func collectActionsEnabled(ctx context.Context, c *Client, data *models.PlatformInfo) {
+	if !data.IsFork {
+		return
+	}
+
+	perms, resp, err := c.gh.Repositories.GetActionsPermissions(ctx, data.Owner, data.Repo)
+	c.updateRate(resp)
+
+	if err != nil {
+		return // leave as -1
+	}
+
+	if perms.GetEnabled() {
+		data.ActionsEnabled = 1
+	} else {
+		data.ActionsEnabled = 0
+	}
 }
 
 // CollectSecurityAlerts fetches open security alert counts from all three
