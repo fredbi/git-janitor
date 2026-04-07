@@ -46,13 +46,14 @@ Right pane Tabs
 ───────────────
   Ctrl+A / ← / →    Cycle through tabs (when right pane is focused)
 
-  The right pane has six tabs:
+  The right pane has seven tabs:
   • Facts     — quick recap: path, kind, SCM, last commit, branch,
                 upstream, working tree status, remotes, stash count
   • Branches  — scrollable list of local and remote branches
   • Stashes   — scrollable list of stash entries (most recent first)
   • Alerts    — notifications about the selected repository
   • Actions   — available cleanup operations
+  • Activity  — GitHub issues, PRs, workflow runs (on demand)
   • Recent    — log of recently performed actions
 
   Facts and Branches auto-populate when you select a repo, and refresh
@@ -178,6 +179,29 @@ Press Esc or Ctrl+H to close.  /help for general help.
     Enter              Show branch details
 
   Auto-refreshes after Ctrl+R (fetch).
+
+────────────────────
+Press Esc or Ctrl+H to close.  /help for general help.
+`,
+
+	"activity": `Activity Tab
+══════════════
+
+  GitHub activity: Issues, Pull Requests, Workflow Runs.
+  Data is fetched on demand — select a sub-tab and press Enter.
+
+  Sub-tab bar:
+    ← / →              Switch between Issues, PRs, Workflows
+    Enter / ↓ / j      Enter list (triggers fetch on first entry)
+
+  List navigation:
+    j / k  or  ↑ / ↓   Navigate items
+    PgUp / PgDn         Page up / page down
+    g / G               Jump to top / bottom
+    Enter               Show item details
+    Esc / ↑ (at top)    Back to sub-tab bar
+
+  Requires GH_TOKEN for GitHub API access.
 
 ────────────────────
 Press Esc or Ctrl+H to close.  /help for general help.

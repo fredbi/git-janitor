@@ -2,9 +2,6 @@
 * ~refresh repo: add progress bar~
 * ~go-fred-mcp go bulk-rename tool~
 
-## help
-
-* [x] ctrl-H: contextualized help for current tab
 
 # bugs
 
@@ -12,12 +9,18 @@
 * [x] locked kv store
 * [x] diverged branches doesn't work (benchviz)
 * [x] action github set-repo-description: wrong runner type
+* ux glitch: left panel changes height depending on the tab displayed on the right (+1/-1 line)
+* delete-branch: branch can be deleted but this is the current branch -> should first switch to the default branch, then delete
 
 ## theming
 
 extract primary, secondary, tertiary: this is the base theme -> reusable as a bubble
 
 other fields are a specialization for our panels
+
+## help
+
+* [x] ctrl-H: contextualized help for current tab
 
 ## stashes, dirty tree & inactive local
 
@@ -31,17 +34,27 @@ other fields are a specialization for our panels
 * [x] new git check: for inactive locals with dirty tree older than 30 days, suggest same as for old stash: copy to worktree, branch out, commit, push upstream
 * [x] local inactive repo with current branch != default branch : suggest switch to default branch
 
+## git checks / alerts
+
 Improvements:
 
-* [ ] UX: mini-form overlay in actions panel for per-subject parameter editing (branch name, commit message) before execution
+* [ ] UX (branches, stashes): mini-form overlay in actions panel for per-subject parameter editing (branch name, commit message) before execution
 * [ ] action to repair default branch mismatch
 * [ ] detect "track-only clones" and impose shallow clone
+* fork: rebase/merge/delete on remote branches
+* branches/stashes: new ux interactions in the details panel:
+  * D : delete stash / branch
+  * R : rebase (could also apply to stashes)
+* git-exposed-credentials-remote: check the presence of a password/token in the remote url
+* forks: check already merged remote on upstream
+* new git action: delete stash
+* test case with multiple worktrees
 
 ## history
 
 * [x] keep full record of git command
 
-## branches
+## [x] branches
 
 * [x] new branch info:
   * [x] last updated in git time 
@@ -54,17 +67,21 @@ Improvements:
 * [x] branches tab:
   * ordered by last updated in git time DESC
   * EXCEPTION: default branch always comes first, current branch second (if not default)
-* fork: rebase/merge/delete on remote branches
 
 ## github features
 
 * [x] forks github: fix missing "delete head on merge" setup
 * [x] forks: disable CI
 * [x] branch protection rules
-* workflow failures
-* issues
-* PRs
-* dependabot PRs / successful CI / pending >3 days: suggestion comment @dependabot rebase
+
+* [x] workflow runs / failures
+  * workflow details
+* [x] issues
+  * issue details
+* [x] PRs
+  * PR details
+* [ ] dependabot PRs / successful CI / pending >3 days: suggestion comment @dependabot rebase
+
 * gists
 * keys?
 * old & large CI artifacts
@@ -77,27 +94,40 @@ Improvements:
 * is there a context associated to bubble components or should we always assume background?
 * self-update
 
-* new ux interactions in the details panel:
-  * D : delete stash / branch
-  * R : rebase (could also apply to stashes)
 
 ## quality
 
 * use go-openapi/testify
 * use full SPDX headers everywhere
-* use mockery to generate mocks
+* [x] use mockery to generate mocks
 * CI & release (w/ goreleaser & binary artifacts)
-
-## other git fixes
-
-* git-exposed-credentials-remote: check the presence of a password/token in the remote url
-* forks: check already merged remote on upstream
 
 ## AI features
 
+* add "manual actions" panel
+* add "suggestion actions" with "prompt runner"
 * check "material" stash or dirty
  * delete / clean
-* new git action: delete stash
+
+New Concepts
+
+### Declare a new "prompt tool" backend
+
+This new runner runs either checks or actions like other runners but its outcome is a prompt suitable for an agent.
+
+Example: action "prompt-resolve-merge-conflicts"
+
+* suggested action after "merge conflict"
+* assess how distant the branch is from current master: for very old work, first ask the model if still relevant
+* takes the branch subject, evaluates the diff, evaluates where conflicts are
+* isolates conflicting files
+* produces a prompt with the appropriate context
+* runs claude as a command line using sonnet to resolve merge conflicts
+  * todo: config to use different agents, env vars, permissions etc
+    (agent config)
+* special instructions for golang: don't worry too much about go.mod / go.sum etc
+* prompt is stored in history
+* interactive mode: create new worktree and suggest user review?
 
 ## config
 
@@ -172,6 +202,10 @@ github client internal rate limiting is for the moment orthogonal to this mechan
 ## single all-alerts panel
 
 A panel that displays all alerts (by default not "info") on all repos
-
+* should be on the left panel (with repo roots)
 * requires "refresh all"
+
+## config
+
+* root path auto-completion
 

@@ -153,6 +153,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case uxtypes.FetchDetailMsg:
 		return m, m.fetchDetail(msg.Scope)
 
+	case uxtypes.ActivityDataMsg:
+		m.Right.SetActivityData(msg.Info)
+
+		return m, nil
+
 	case uxtypes.ShowSuggestionsMsg:
 		// Forward to the right panel — it switches to Actions tab.
 		cmd := m.Right.Update(msg)
@@ -506,6 +511,8 @@ func (m *Model) helpContext() string {
 			return "alerts"
 		case infos.TabActions:
 			return "actions"
+		case infos.TabActivity:
+			return "activity"
 		case infos.TabRecent:
 			return "recent"
 		}

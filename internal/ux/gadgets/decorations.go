@@ -52,11 +52,27 @@ func TimeAgo(t time.Time) string {
 		return fmt.Sprintf("%d hours ago", h)
 	default:
 		days := int(d.Hours() / 24) //nolint:mnd // 24 hours per day
-		if days == 1 {
-			return "1 day ago"
-		}
 
-		return fmt.Sprintf("%d days ago", days)
+		switch {
+		case days == 1:
+			return "1 day ago"
+		case days < 30: //nolint:mnd // month threshold
+			return fmt.Sprintf("%dd ago", days)
+		case days < 365: //nolint:mnd // year threshold
+			months := days / 30 //nolint:mnd // approximate
+			if months == 1 {
+				return "1 month ago"
+			}
+
+			return fmt.Sprintf("%dmo ago", months)
+		default:
+			years := days / 365 //nolint:mnd // approximate
+			if years == 1 {
+				return "1 year ago"
+			}
+
+			return fmt.Sprintf("%dy ago", years)
+		}
 	}
 }
 

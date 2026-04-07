@@ -83,11 +83,21 @@ func (m *Model) triggerGitHubFetch(info *models.RepoInfo, forceRefresh bool) tea
 	}
 }
 
-// fetchDetail runs CollectDetails asynchronously and returns a ShowDetailMsg.
+// fetchDetail runs CollectDetails asynchronously and returns a ShowDetailMsg
+// or an ActivityDataMsg for list-type subjects.
 func (m *Model) fetchDetail(scope models.ActionSuggestion) tea.Cmd {
 	info := m.LastRepoInfo
 	if info == nil || info.IsEmpty() {
 		return nil
+	}
+
+	// Activity list subjects return data to populate the panel, not a popup.
+	if isActivityListSubject(scope.SubjectKind) {
+		return func() tea.Msg {
+			enriched := m.Engine.CollectDetails(context.Background(), info, scope)
+
+			return uxtypes.ActivityDataMsg{Info: enriched}
+		}
 	}
 
 	return func() tea.Msg {
@@ -99,6 +109,15 @@ func (m *Model) fetchDetail(scope models.ActionSuggestion) tea.Cmd {
 			Title:   title,
 			Content: content,
 		}
+	}
+}
+
+func isActivityListSubject(kind models.SubjectKind) bool {
+	switch kind {
+	case models.SubjectIssues, models.SubjectPullRequests, models.SubjectWorkflowRuns:
+		return true
+	default:
+		return false
 	}
 }
 

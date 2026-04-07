@@ -126,6 +126,11 @@ type FetchDetailMsg struct {
 	Scope models.ActionSuggestion
 }
 
+// ActivityDataMsg is sent when activity data (issues/PRs/runs) has been fetched.
+type ActivityDataMsg struct {
+	Info *models.RepoInfo
+}
+
 // GitHubInfoMsg is sent when background GitHub API fetch completes.
 type GitHubInfoMsg struct {
 	RepoPath string

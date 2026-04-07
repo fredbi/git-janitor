@@ -46,6 +46,9 @@ const (
 	SubjectStash                     // a git stash entry
 	SubjectTag                       // a git tag
 	SubjectFile                      // a git file object
+	SubjectIssues                    // GitHub issues (paginated list)
+	SubjectPullRequests              // GitHub pull requests (paginated list)
+	SubjectWorkflowRuns              // GitHub workflow runs (paginated list)
 )
 
 // String returns the human-readable name of a SubjectKind.
@@ -63,6 +66,12 @@ func (s SubjectKind) String() string {
 		return "stash"
 	case SubjectTag:
 		return "tag"
+	case SubjectIssues:
+		return "issues"
+	case SubjectPullRequests:
+		return "pull_requests"
+	case SubjectWorkflowRuns:
+		return "workflow_runs"
 	default:
 		return "unknown"
 	}

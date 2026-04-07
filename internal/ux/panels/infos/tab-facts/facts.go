@@ -14,12 +14,12 @@ import (
 
 // Panel displays a quick recap of the selected repository's properties.
 type Panel struct {
-	Theme          *types.Theme
-	Info           *models.RepoInfo
-	GitHubEnabled  bool // whether the GitHub provider is available
-	Offset         int  // scroll offset
-	Width          int
-	Height         int
+	Theme         *types.Theme
+	Info          *models.RepoInfo
+	GitHubEnabled bool // whether the GitHub provider is available
+	Offset        int  // scroll offset
+	Width         int
+	Height        int
 }
 
 // New creates a new Panel.

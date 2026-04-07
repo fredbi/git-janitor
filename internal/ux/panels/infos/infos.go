@@ -13,6 +13,7 @@ import (
 	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/models"
 	actions "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-actions"
+	activity "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-activity"
 	alerts "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-alerts"
 	branches "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-branches"
 	facts "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-facts"
@@ -31,12 +32,13 @@ const (
 	TabBranches                 // branches tab
 	TabAlerts                   // alerts tab
 	TabActions                  // actions tab
+	TabActivity                 // activity tab (issues, PRs, workflow runs)
 	TabStashes                  // stashes tab
 	TabRecent                   // recent activity tab
 )
 
 // RightTabCount is the number of tabs in the right panel.
-const RightTabCount = 6
+const RightTabCount = 7
 
 // Panel is a tab container for the right Pane.
 type Panel struct {
@@ -46,6 +48,7 @@ type Panel struct {
 	Stashes  stashes.Panel
 	Alerts   alerts.Panel
 	Actions  actions.Panel
+	Activity activity.Panel
 	Recent   recent.Panel
 	Active   RightTab
 	Width    int
@@ -70,6 +73,7 @@ func New(eng ifaces.Engineer, theme *uxtypes.Theme) Panel {
 		Stashes:  stashes.New(theme),
 		Alerts:   alerts.New(theme),
 		Actions:  actions.New(eng, theme),
+		Activity: activity.New(theme),
 		Recent:   recent.New(theme),
 		Active:   TabFacts,
 		Engine:   eng,
@@ -84,6 +88,7 @@ func (p *Panel) SetTheme(theme *uxtypes.Theme) {
 	p.Stashes.Theme = theme
 	p.Alerts.Theme = theme
 	p.Actions.Theme = theme
+	p.Activity.Theme = theme
 	p.Recent.Theme = theme
 }
 
@@ -91,6 +96,11 @@ func (p *Panel) SetTheme(theme *uxtypes.Theme) {
 // Called after action execution to pick up the new entry.
 func (p *Panel) RefreshRecent() {
 	p.refreshRecent(p.RepoPath)
+}
+
+// SetActivityData updates the Activity panel with fetched data.
+func (p *Panel) SetActivityData(info *models.RepoInfo) {
+	p.Activity.SetData(info)
 }
 
 // CycleTab advances the active tab forward by one.
@@ -120,6 +130,7 @@ var RightTabDefs = []struct { //nolint:gochecknoglobals // tab definition table
 	{"Branches", TabBranches},
 	{"Alerts", TabAlerts},
 	{"Actions", TabActions},
+	{"Activity", TabActivity},
 	{"Stashes", TabStashes},
 	{"Recent", TabRecent},
 }
@@ -136,6 +147,7 @@ func (p *Panel) SetRepoInfo(info *models.RepoInfo) {
 	p.Facts.SetInfo(info)
 	p.Branches.SetInfo(info)
 	p.Stashes.SetInfo(info)
+	p.Activity.Reset()
 	p.Actions.Clear()
 	p.LastAlerts = nil // clear previous alerts before re-evaluation
 
@@ -206,9 +218,18 @@ func (p *Panel) ActiveTabName() string {
 	return ""
 }
 
-// IsCapturingInput reports whether a sub-panel has an active text input.
+// IsCapturingInput reports whether a sub-panel is capturing keys that
+// would otherwise be handled by the parent (text input, sub-tab navigation).
 func (p *Panel) IsCapturingInput() bool {
-	return p.Active == TabActions && p.Actions.IsCapturingInput()
+	if p.Active == TabActions && p.Actions.IsCapturingInput() {
+		return true
+	}
+
+	if p.Active == TabActivity && p.Activity.IsCapturingInput() {
+		return true
+	}
+
+	return false
 }
 
 // SetSize updates the panel dimensions and propagates to sub-panels.
@@ -225,6 +246,7 @@ func (p *Panel) SetSize(w, h int) {
 	p.Stashes.SetSize(contentW, contentH)
 	p.Alerts.SetSize(contentW, contentH)
 	p.Actions.SetSize(contentW, contentH)
+	p.Activity.SetSize(contentW, contentH)
 	p.Recent.SetSize(contentW, contentH)
 }
 
@@ -252,6 +274,8 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 		return p.Alerts.Update(msg)
 	case TabActions:
 		return p.Actions.Update(msg)
+	case TabActivity:
+		return p.Activity.Update(msg)
 	case TabRecent:
 		return p.Recent.Update(msg)
 	default:
@@ -309,6 +333,8 @@ func (p *Panel) View(focused bool) string {
 		content = p.Alerts.View()
 	case TabActions:
 		content = p.Actions.View()
+	case TabActivity:
+		content = p.Activity.View()
 	case TabRecent:
 		content = p.Recent.View()
 	default:

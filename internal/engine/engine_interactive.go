@@ -223,13 +223,19 @@ func (e *Interactive) CollectDetails(ctx context.Context, info *models.RepoInfo,
 		return info
 	}
 
-	runner := gitbackend.NewRunner(info.Path)
-
 	switch scope.SubjectKind {
 	case models.SubjectBranch:
+		runner := gitbackend.NewRunner(info.Path)
 		e.collectBranchDetails(ctx, runner, info, scope)
 	case models.SubjectStash:
+		runner := gitbackend.NewRunner(info.Path)
 		e.collectStashDetails(ctx, runner, info, scope)
+	case models.SubjectIssues:
+		e.collectIssueList(ctx, info, scope)
+	case models.SubjectPullRequests:
+		e.collectPullRequestList(ctx, info, scope)
+	case models.SubjectWorkflowRuns:
+		e.collectWorkflowRunList(ctx, info, scope)
 	}
 
 	// Update cache with enriched data.
@@ -363,6 +369,16 @@ func (e *Interactive) collectPlatform(ctx context.Context, info *models.RepoInfo
 	if platform != nil {
 		// Inject local default branch for cross-check.
 		platform.LocalDefaultBranch = info.DefaultBranch
+
+		// Preserve activity data from the previous Platform if it exists.
+		// Activity data is collected separately via CollectDetails and should
+		// survive platform metadata refreshes.
+		if old := info.Platform; old != nil {
+			platform.Issues = old.Issues
+			platform.PullRequests = old.PullRequests
+			platform.WorkflowRuns = old.WorkflowRuns
+		}
+
 		info.Platform = platform
 	}
 

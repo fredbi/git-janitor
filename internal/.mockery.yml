@@ -1,0 +1,35 @@
+all: false
+dir: '{{.InterfaceDir}}'
+filename: mocks_test.go
+force-file-write: true
+formatter: goimports
+include-auto-generated: false
+log-level: info
+structname: '{{.Mock}}{{.InterfaceName}}'
+pkgname: '{{.SrcPackageName}}'
+recursive: false
+require-template-schema-exists: true
+template: matryer
+template-schema: '{{.Template}}.schema.json'
+packages:
+  github.com/fredbi/git-janitor/internal/ifaces:
+    config:
+      dir: ifaces/mocks
+      filename: mocks.go
+      pkgname: 'mocks'
+      force-file-write: true
+      all: true
+  github.com/fredbi/git-janitor/internal/store:
+    config:
+      dir: ifaces/mocks
+      filename: mocks_store.go
+      pkgname: 'mocks'
+      force-file-write: true
+      all: true
+  github.com/fredbi/git-janitor/internal/registry:
+    config:
+      dir: ifaces/mocks
+      filename: mocks_registry.go
+      pkgname: 'mocks'
+      force-file-write: true
+      all: true

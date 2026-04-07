@@ -67,6 +67,11 @@ type PlatformInfo struct {
 	// -1 = not fetched, 0 = disabled, 1 = enabled.
 	ActionsEnabled int
 
+	// Activity data (populated on demand via CollectDetails).
+	Issues       []Issue
+	PullRequests []PullRequest
+	WorkflowRuns []WorkflowRun
+
 	// Cross-check field: injected from git data.
 	LocalDefaultBranch string
 
