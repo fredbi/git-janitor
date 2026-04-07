@@ -2,35 +2,22 @@ package actions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/fredbi/git-janitor/internal/git/backend"
+	"github.com/fredbi/git-janitor/internal/ifaces"
 )
-
-type gitContextKey uint8
-
-const (
-	repoInfoKey gitContextKey = iota + 1
-	runnerKey
-)
-
-func repoInfoCtx(ctx context.Context) (*backend.RepoInfo, error) {
-	raw := ctx.Value(repoInfoKey)
-
-	info, ok := raw.(*backend.RepoInfo)
-	if !ok {
-		return nil, fmt.Errorf("internal error: expected git *backend.RepoInfo but got: %T", raw)
-	}
-
-	return info, nil
-}
 
 func runnerCtx(ctx context.Context) (*backend.Runner, error) {
-	raw := ctx.Value(runnerKey)
+	r, ok := ifaces.RunnerFromContext(ctx)
+	if !ok || r == nil {
+		return nil, errors.New("internal error: no runner in context")
+	}
 
-	runner, ok := raw.(*backend.Runner)
+	runner, ok := r.(*backend.Runner)
 	if !ok {
-		return nil, fmt.Errorf("internal error: expected git *backend.Runner but got: %T", raw)
+		return nil, fmt.Errorf("internal error: expected git *backend.Runner but got: %T", r)
 	}
 
 	return runner, nil

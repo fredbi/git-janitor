@@ -7,39 +7,39 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fredbi/git-janitor/internal/engine"
-	git "github.com/fredbi/git-janitor/internal/git/backend"
-	github "github.com/fredbi/git-janitor/internal/github/backend"
+	"github.com/fredbi/git-janitor/internal/models"
+	"github.com/fredbi/git-janitor/internal/ux/key"
 	"github.com/fredbi/git-janitor/internal/ux/types"
 )
 
 // Panel displays a quick recap of the selected repository's properties.
 type Panel struct {
-	Info   *engine.RepoInfo
+	Theme  *types.Theme
+	Info   *models.RepoInfo
 	Offset int // scroll offset
 	Width  int
 	Height int
 }
 
 // New creates a new Panel.
-func New() Panel {
-	return Panel{}
+func New(theme *types.Theme) Panel {
+	return Panel{Theme: theme}
 }
 
-func (p *Panel) SetInfo(info *engine.RepoInfo) {
+func (p *Panel) SetInfo(info *models.RepoInfo) {
 	p.Info = info
-	p.Info.GitHubInfo = nil // clear until GitHub data arrives
+	p.Info.Platform = nil // clear until GitHub data arrives
 	p.Offset = 0
 }
 
-func (p *Panel) SetGitHubData(info *engine.RepoInfo) {
+func (p *Panel) SetGitHubData(info *models.RepoInfo) {
 	if p.Info == nil {
 		p.Info = info
 
 		return
 	}
 
-	p.Info.GitHubInfo = info.GitHubInfo
+	p.Info.Platform = info.Platform
 }
 
 func (p *Panel) SetSize(w, h int) {
@@ -56,18 +56,22 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 	lines := p.buildLines()
 	maxOffset := max(len(lines)-p.Height, 0)
 
-	switch km.String() {
-	case "up", "k":
+	switch key.MsgBinding(km) {
+	case key.Up, key.K:
 		if p.Offset > 0 {
 			p.Offset--
 		}
-	case "down", "j":
+	case key.Down, key.J:
 		if p.Offset < maxOffset {
 			p.Offset++
 		}
-	case "home", "g":
+	case key.PageUp:
+		p.Offset = max(0, p.Offset-p.Height)
+	case key.PageDown:
+		p.Offset = min(maxOffset, p.Offset+p.Height)
+	case key.Home, key.G:
 		p.Offset = 0
-	case "end", "G":
+	case key.End, key.GG:
 		p.Offset = maxOffset
 	}
 
@@ -76,7 +80,7 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 
 func (p *Panel) View() string {
 	if p.Info.IsEmpty() {
-		return lipgloss.NewStyle().Foreground(types.CurrentTheme.Dim).
+		return lipgloss.NewStyle().Foreground(p.Theme.Dim).
 			Render("  Select a repository to view its properties.")
 	}
 
@@ -96,14 +100,14 @@ func (p *Panel) buildLines() []string {
 	}
 
 	info := p.Info
-	t := types.CurrentTheme
+	t := p.Theme
 	// TODO: factorize
 	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(t.Secondary)
 	valStyle := lipgloss.NewStyle().Foreground(t.Text)
 	dimStyle := lipgloss.NewStyle().Foreground(t.Dim)
 	warnStyle := lipgloss.NewStyle().Foreground(t.Warning)
 
-	if err := info.Err(); err != nil {
+	if err := info.RepoErr(); err != nil {
 		return []string{
 			warnStyle.Render(fmt.Sprintf("  Error: %v", err)),
 		}
@@ -116,36 +120,36 @@ func (p *Panel) buildLines() []string {
 	}
 
 	// Path.
-	line("Path:", info.GitInfo.Path)
+	line("Path:", info.Path)
 
 	// Kind and SCM.
-	line("Kind:", info.GitInfo.Kind.String())
-	line("SCM:", info.GitInfo.SCM.String())
+	line("Kind:", info.Kind.String())
+	line("SCM:", info.SCM.String())
 
 	// Remote status (shown when fetch failed).
-	if info.GitInfo.FetchErr != nil {
+	if info.FetchErr != nil {
 		lines = append(
 			lines,
 			"  "+
 				labelStyle.Render("Remote:")+
 				" "+
-				warnStyle.Render(fmt.Sprintf("unavailable — %v", info.GitInfo.FetchErr))+
+				warnStyle.Render(fmt.Sprintf("unavailable — %v", info.FetchErr))+
 				" ",
 		)
 	}
 
 	// Non-git directory: show minimal info.
-	if !info.GitInfo.IsGit {
+	if !info.IsGit {
 		return lines
 	}
 
 	// Last commit.
-	if !info.GitInfo.LastCommit.IsZero() {
-		line("Last commit:", info.GitInfo.LastCommit.Format("2006-01-02 15:04"))
+	if !info.LastCommit.IsZero() {
+		line("Last commit:", info.LastCommit.Format("2006-01-02 15:04"))
 	}
 
 	// Current branch.
-	branch := info.GitInfo.Status.Branch
+	branch := info.Status.Branch
 	if branch == "" {
 		branch = "(detached HEAD)"
 	}
@@ -153,12 +157,12 @@ func (p *Panel) buildLines() []string {
 	line("Branch:", branch)
 
 	// Default branch.
-	if info.GitInfo.DefaultBranch != "" {
-		line("Default:", info.GitInfo.DefaultBranch)
+	if info.DefaultBranch != "" {
+		line("Default:", info.DefaultBranch)
 	}
 
 	// HEAD.
-	oid := info.GitInfo.Status.OID
+	oid := info.Status.OID
 	if len(oid) > 10 {
 		oid = oid[:10]
 	}
@@ -166,10 +170,10 @@ func (p *Panel) buildLines() []string {
 	line("HEAD:", oid)
 
 	// Upstream.
-	if info.GitInfo.Status.Upstream != "" {
-		upstream := info.GitInfo.Status.Upstream
-		if info.GitInfo.Status.Ahead > 0 || info.GitInfo.Status.Behind > 0 {
-			upstream += fmt.Sprintf("  (ahead %d, behind %d)", info.GitInfo.Status.Ahead, info.GitInfo.Status.Behind)
+	if info.Status.Upstream != "" {
+		upstream := info.Status.Upstream
+		if info.Status.Ahead > 0 || info.Status.Behind > 0 {
+			upstream += fmt.Sprintf("  (ahead %d, behind %d)", info.Status.Ahead, info.Status.Behind)
 		}
 
 		line("Upstream:", upstream)
@@ -178,10 +182,10 @@ func (p *Panel) buildLines() []string {
 	}
 
 	// Dirty status.
-	if info.GitInfo.Status.IsDirty() {
+	if info.Status.IsDirty() {
 		var counts []string
 
-		staged, unstaged, untracked := classifyEntries(info.GitInfo.Status.Entries)
+		staged, unstaged, untracked := classifyEntries(info.Status.Entries)
 		if staged > 0 {
 			counts = append(counts, fmt.Sprintf("%d staged", staged))
 		}
@@ -200,15 +204,15 @@ func (p *Panel) buildLines() []string {
 	}
 
 	// Branches summary.
-	local, remote := countBranches(info.GitInfo.Branches)
+	local, remote := countBranches(info.Branches)
 	line("Branches:", fmt.Sprintf("%d local, %d remote", local, remote))
 
 	// Remotes.
-	if len(info.GitInfo.Remotes) > 0 {
+	if len(info.Remotes) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, "  "+labelStyle.Render("Remotes:"))
 
-		for _, rm := range info.GitInfo.Remotes {
+		for _, rm := range info.Remotes {
 			lines = append(lines, fmt.Sprintf("    %s  %s",
 				valStyle.Render(rm.Name),
 				dimStyle.Render(rm.FetchURL),
@@ -217,14 +221,14 @@ func (p *Panel) buildLines() []string {
 	}
 
 	// Stashes.
-	if len(info.GitInfo.Stashes) > 0 {
+	if len(info.Stashes) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, fmt.Sprintf("  %s  %s",
 			labelStyle.Render("Stashes:"),
-			valStyle.Render(strconv.Itoa(len(info.GitInfo.Stashes))),
+			valStyle.Render(strconv.Itoa(len(info.Stashes))),
 		))
 
-		for _, st := range info.GitInfo.Stashes {
+		for _, st := range info.Stashes {
 			msg := st.Message
 			if msg == "" {
 				msg = "(no message)"
@@ -249,7 +253,7 @@ func (p *Panel) buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle lipgl
 		return nil
 	}
 
-	gh := p.Info.GitHubInfo
+	gh := p.Info.Platform
 	if gh == nil {
 		return nil
 	}
@@ -290,7 +294,7 @@ func (p *Panel) buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle lipgl
 		desc := gh.Description
 		maxLen := p.Width - 20
 		if maxLen > 0 && len(desc) > maxLen {
-			desc = desc[:maxLen-1] + "…"
+			desc = desc[:maxLen-1] + "..."
 		}
 
 		line("Description:", desc)
@@ -326,7 +330,7 @@ func (p *Panel) buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle lipgl
 }
 
 // classifyEntries counts staged, unstaged, and untracked entries.
-func classifyEntries(entries []git.StatusEntry) (staged, unstaged, untracked int) {
+func classifyEntries(entries []models.StatusEntry) (staged, unstaged, untracked int) {
 	for _, e := range entries {
 		if e.IsUntracked() {
 			untracked++
@@ -346,7 +350,7 @@ func classifyEntries(entries []git.StatusEntry) (staged, unstaged, untracked int
 	return
 }
 
-func (p *Panel) buildSecurityLines(gh *github.RepoInfo, labelStyle, valStyle, dimStyle, warnStyle lipgloss.Style) []string {
+func (p *Panel) buildSecurityLines(gh *models.PlatformInfo, labelStyle, valStyle, dimStyle, warnStyle lipgloss.Style) []string {
 	if gh.SecuritySkipped {
 		return []string{fmt.Sprintf("  %s  %s",
 			labelStyle.Render("Security:"),
@@ -409,7 +413,7 @@ func (p *Panel) buildSecurityLines(gh *github.RepoInfo, labelStyle, valStyle, di
 }
 
 // countBranches counts local and remote branches.
-func countBranches(branches []git.Branch) (local, remote int) {
+func countBranches(branches []models.Branch) (local, remote int) {
 	for _, b := range branches {
 		if b.IsRemote {
 			remote++

@@ -6,7 +6,6 @@ import (
 	"iter"
 	"strings"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -27,17 +26,12 @@ func NewTagsLocalOnly() TagsLocalOnly {
 }
 
 // Evaluate inspects Tags for local-only tags.
-func (c TagsLocalOnly) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c TagsLocalOnly) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c TagsLocalOnly) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
-	subjects := filterTags(info, func(t backend.Tag) bool {
+func (c TagsLocalOnly) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	subjects := filterTags(info, func(t models.Tag) bool {
 		return t.LocalOnly
 	})
 
@@ -72,17 +66,12 @@ func NewTagsRemoteOnly() TagsRemoteOnly {
 }
 
 // Evaluate inspects Tags for remote-only tags.
-func (c TagsRemoteOnly) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c TagsRemoteOnly) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c TagsRemoteOnly) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
-	subjects := filterTags(info, func(t backend.Tag) bool {
+func (c TagsRemoteOnly) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	subjects := filterTags(info, func(t models.Tag) bool {
 		return t.RemoteOnly
 	})
 

@@ -23,6 +23,6 @@ func (gitCheck) Kind() models.CheckKind { return models.CheckKindGit }
 // Evaluate is the default implementation that returns "not implemented".
 //
 // Concrete checks override this method.
-func (gitCheck) Evaluate(_ context.Context) (iter.Seq[models.Alert], error) {
+func (gitCheck) Evaluate(_ context.Context, _ *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return nil, errors.New("not implemented")
 }

@@ -14,12 +14,13 @@ import (
 // RepoDelegate is a custom list delegate that highlights non-git items
 // using the current theme's NotGit color.
 type RepoDelegate struct {
-	Base list.DefaultDelegate
+	Theme *uxtypes.Theme
+	Base  list.DefaultDelegate
 }
 
 // NewRepoDelegate creates a RepoDelegate styled with the current theme.
-func NewRepoDelegate() RepoDelegate {
-	t := uxtypes.CurrentTheme
+func NewRepoDelegate(theme *uxtypes.Theme) RepoDelegate {
+	t := theme
 	base := list.NewDefaultDelegate()
 	base.Styles.SelectedTitle = base.Styles.SelectedTitle.
 		Foreground(t.Accent).
@@ -28,7 +29,7 @@ func NewRepoDelegate() RepoDelegate {
 		Foreground(t.Dim).
 		BorderLeftForeground(t.Accent)
 
-	return RepoDelegate{Base: base}
+	return RepoDelegate{Theme: theme, Base: base}
 }
 
 func (d RepoDelegate) Height() int                               { return d.Base.Height() }
@@ -43,7 +44,7 @@ func (d RepoDelegate) Render(w io.Writer, m list.Model, index int, item list.Ite
 		return
 	}
 
-	t := uxtypes.CurrentTheme
+	t := d.Theme
 	isSelected := index == m.Index()
 
 	titleStyle := lipgloss.NewStyle().

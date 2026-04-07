@@ -5,11 +5,10 @@ import (
 	"iter"
 	"strings"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
-func filterBranches(info *backend.RepoInfo, filter func(backend.Branch) bool) []models.ActionSubject {
+func filterBranches(info *models.RepoInfo, filter func(models.Branch) bool) []models.ActionSubject {
 	var subjects []models.ActionSubject
 
 	for _, b := range info.Branches {
@@ -23,7 +22,7 @@ func filterBranches(info *backend.RepoInfo, filter func(backend.Branch) bool) []
 	return subjects
 }
 
-func filterTags(info *backend.RepoInfo, filter func(backend.Tag) bool) []models.ActionSubject {
+func filterTags(info *models.RepoInfo, filter func(models.Tag) bool) []models.ActionSubject {
 	var subjects []models.ActionSubject
 
 	for _, t := range info.Tags {

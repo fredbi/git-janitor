@@ -6,7 +6,6 @@ import (
 	"iter"
 	"strings"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -28,17 +27,12 @@ func NewBranchLagging() BranchLagging {
 
 // Evaluate inspects Branches for local branches with Behind > 0 and an upstream configured.
 // The default branch is always checked (it can lag even though it's "merged into itself").
-func (c BranchLagging) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c BranchLagging) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c BranchLagging) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
-	subjects := filterBranches(info, func(b backend.Branch) bool {
+func (c BranchLagging) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	subjects := filterBranches(info, func(b models.Branch) bool {
 		if b.IsRemote || !b.HasUpstream() || b.Behind == 0 {
 			return false
 		}
@@ -84,17 +78,12 @@ func NewBranchMergedNotDeleted() BranchMergedNotDeleted {
 }
 
 // Evaluate inspects Branches for merged local branches that are not the default branch.
-func (c BranchMergedNotDeleted) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c BranchMergedNotDeleted) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c BranchMergedNotDeleted) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
-	subjects := filterBranches(info, func(b backend.Branch) bool {
+func (c BranchMergedNotDeleted) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	subjects := filterBranches(info, func(b models.Branch) bool {
 		if !b.IsRemote && b.Merged && b.Name != info.DefaultBranch {
 			return true
 		}
@@ -134,17 +123,12 @@ func NewBranchGoneUpstream() BranchGoneUpstream {
 }
 
 // Evaluate inspects Branches for local branches with Gone set to true.
-func (c BranchGoneUpstream) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c BranchGoneUpstream) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c BranchGoneUpstream) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
-	subjects := filterBranches(info, func(b backend.Branch) bool {
+func (c BranchGoneUpstream) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	subjects := filterBranches(info, func(b models.Branch) bool {
 		if b.IsRemote || b.Merged || !b.Gone {
 			return false
 		}
@@ -185,17 +169,12 @@ func NewBranchNoUpstream() BranchNoUpstream {
 }
 
 // Evaluate inspects Branches for local non-current, non-merged branches without an upstream.
-func (c BranchNoUpstream) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c BranchNoUpstream) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c BranchNoUpstream) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
-	subjects := filterBranches(info, func(b backend.Branch) bool {
+func (c BranchNoUpstream) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	subjects := filterBranches(info, func(b models.Branch) bool {
 		if b.IsRemote || b.IsCurrent || b.Merged || b.Name == info.DefaultBranch {
 			return false
 		}
@@ -242,17 +221,12 @@ func NewBranchDiverged() BranchDiverged {
 // Evaluate inspects Branches for local branches with both Ahead > 0 and Behind > 0.
 // Rebase is only suggested when RebaseCheck confirms the branch can be rebased
 // (directly or via squash).
-func (c BranchDiverged) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c BranchDiverged) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c BranchDiverged) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
-	allDiverged := filterBranches(info, func(b backend.Branch) bool {
+func (c BranchDiverged) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	allDiverged := filterBranches(info, func(b models.Branch) bool {
 		if b.IsRemote || b.Merged || b.Ahead == 0 || b.Behind == 0 {
 			return false
 		}
@@ -264,7 +238,7 @@ func (c BranchDiverged) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert]
 		return noAlert(c.Name())
 	}
 
-	rebasable := filterBranches(info, func(b backend.Branch) bool {
+	rebasable := filterBranches(info, func(b models.Branch) bool {
 		if b.IsRemote || b.Merged || b.Ahead == 0 || b.Behind == 0 {
 			return false
 		}
@@ -313,17 +287,12 @@ func NewBranchNotMergeable() BranchNotMergeable {
 
 // Evaluate inspects Branches for local branches where both MergeCheck and RebaseCheck
 // indicate failure.
-func (c BranchNotMergeable) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c BranchNotMergeable) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c BranchNotMergeable) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
-	subjects := filterBranches(info, func(b backend.Branch) bool {
+func (c BranchNotMergeable) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	subjects := filterBranches(info, func(b models.Branch) bool {
 		if b.IsRemote || b.Merged || b.Name == info.DefaultBranch {
 			return false
 		}

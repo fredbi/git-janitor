@@ -30,12 +30,7 @@ func NewDeleteLocalClone() DeleteLocalClone {
 func (DeleteLocalClone) Destructive() bool           { return true }
 func (DeleteLocalClone) ApplyTo() models.SubjectKind { return models.SubjectRepo }
 
-func (a DeleteLocalClone) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a DeleteLocalClone) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -44,7 +39,7 @@ func (a DeleteLocalClone) Execute(ctx context.Context, subjects []string) (model
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a DeleteLocalClone) execute(ctx context.Context, _ *backend.Runner, info *backend.RepoInfo, _ []string) (models.Result, error) {
+func (a DeleteLocalClone) execute(ctx context.Context, _ *backend.Runner, info *models.RepoInfo, _ []string) (models.Result, error) {
 	if err := fs.DeleteLocalRepo(ctx, info); err != nil {
 		return models.Result{}, err
 	}

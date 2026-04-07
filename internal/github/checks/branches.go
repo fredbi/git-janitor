@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/fredbi/git-janitor/internal/github/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -28,16 +27,15 @@ func NewDefaultBranchMismatch() DefaultBranchMismatch {
 	}
 }
 
-func (c DefaultBranchMismatch) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
+func (c DefaultBranchMismatch) Evaluate(_ context.Context, repoInfo *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	if repoInfo.Platform == nil {
+		return nil, nil
 	}
 
-	return c.evaluate(info)
+	return c.evaluate(repoInfo.Platform)
 }
 
-func (c DefaultBranchMismatch) evaluate(data *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c DefaultBranchMismatch) evaluate(data *models.PlatformInfo) (iter.Seq[models.Alert], error) {
 	// Skip if we don't have local branch info to compare.
 	if data.LocalDefaultBranch == "" || data.DefaultBranch == "" {
 		return singleAlert(models.Alert{

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package actions
 
 import (
@@ -9,6 +11,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/models"
+	"github.com/fredbi/git-janitor/internal/ux/key"
+	"github.com/fredbi/git-janitor/internal/ux/panels"
 	"github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -17,13 +21,11 @@ const cardLines = 4
 
 // Panel displays suggested actions for the currently selected alert.
 type Panel struct {
+	panels.Base
+
 	RepoPath    string
 	Alert       *models.Alert
 	Suggestions []models.ActionSuggestion
-	Cursor      int
-	Offset      int
-	Width       int
-	Height      int
 
 	// Picker state (non-nil when Ctrl+P is active).
 	Picker *SubjectPicker
@@ -39,8 +41,9 @@ type SubjectPicker struct {
 }
 
 // New creates an empty Panel.
-func New(eng ifaces.Engineer) Panel {
+func New(eng ifaces.Engineer, theme *types.Theme) Panel {
 	return Panel{
+		Base:   panels.Base{Theme: theme},
 		Engine: eng,
 	}
 }
@@ -53,16 +56,14 @@ func (p *Panel) SetAlert(repoPath string, alert *models.Alert) {
 	if alert == nil || len(alert.Suggestions) == 0 {
 		p.Alert = nil
 		p.Suggestions = nil
-		p.Cursor = 0
-		p.Offset = 0
+		p.ResetScroll()
 
 		return
 	}
 
 	p.Alert = alert
 	p.Suggestions = alert.Suggestions
-	p.Cursor = 0
-	p.Offset = 0
+	p.ResetScroll()
 }
 
 // Clear removes all suggestions.
@@ -70,13 +71,11 @@ func (p *Panel) Clear() {
 	p.Alert = nil
 	p.Suggestions = nil
 	p.Picker = nil
-	p.Cursor = 0
-	p.Offset = 0
+	p.ResetScroll()
 }
 
 func (p *Panel) SetSize(w, h int) {
-	p.Width = w
-	p.Height = max(h-2, cardLines)
+	p.Base.SetSize(w, h, 2, cardLines)
 }
 
 func (p *Panel) Update(msg tea.Msg) tea.Cmd {
@@ -94,18 +93,14 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 
-	switch km.String() {
-	case "up", "k":
-		if p.Cursor > 0 {
-			p.Cursor--
-			p.clampScroll()
-		}
-	case "down", "j":
-		if p.Cursor < len(p.Suggestions)-1 {
-			p.Cursor++
-			p.clampScroll()
-		}
-	case "enter":
+	if p.NavigateKey(km, len(p.Suggestions)) {
+		p.ClampScroll(p.visibleCards())
+
+		return nil
+	}
+
+	switch key.MsgBinding(km) {
+	case key.Enter:
 		// Execute on ALL subjects.
 		if p.Cursor >= 0 && p.Cursor < len(p.Suggestions) {
 			sug := p.Suggestions[p.Cursor]
@@ -118,7 +113,7 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 				}
 			}
 		}
-	case "ctrl+p":
+	case key.CtrlP:
 		// Open subject picker for multi-subject suggestions.
 		if p.Cursor >= 0 && p.Cursor < len(p.Suggestions) {
 			sug := p.Suggestions[p.Cursor]
@@ -152,23 +147,29 @@ func (p *Panel) updatePicker(km tea.KeyMsg) tea.Cmd {
 	pk := p.Picker
 	n := len(pk.Suggestion.Subjects)
 
-	switch km.String() {
-	case "up", "k":
+	switch key.MsgBinding(km) {
+	case key.Up, key.K:
 		if pk.Cursor > 0 {
 			pk.Cursor--
 			p.clampPickerScroll()
 		}
-	case "down", "j":
+	case key.Down, key.J:
 		if pk.Cursor < n-1 {
 			pk.Cursor++
 			p.clampPickerScroll()
 		}
-	case " ", "space":
+	case key.Home, key.G:
+		pk.Cursor = 0
+		p.clampPickerScroll()
+	case key.End, key.GG:
+		pk.Cursor = max(0, n-1)
+		p.clampPickerScroll()
+	case key.Space:
 		// Toggle checkbox.
 		if pk.Cursor >= 0 && pk.Cursor < n {
 			pk.Checked[pk.Cursor] = !pk.Checked[pk.Cursor]
 		}
-	case "enter":
+	case key.Enter:
 		// Execute with selected subjects only.
 		var selected []models.ActionSubject
 
@@ -191,14 +192,14 @@ func (p *Panel) updatePicker(km tea.KeyMsg) tea.Cmd {
 				Subjects:   selected,
 			}
 		}
-	case "esc":
+	case key.Esc:
 		p.Picker = nil
-	case "a":
+	case key.A:
 		// Select all.
 		for i := range pk.Checked {
 			pk.Checked[i] = true
 		}
-	case "n":
+	case key.N:
 		// Select none.
 		for i := range pk.Checked {
 			pk.Checked[i] = false
@@ -208,23 +209,15 @@ func (p *Panel) updatePicker(km tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func (p *Panel) clampScroll() {
-	visibleCards := max(p.Height/cardLines, 1)
-
-	if p.Cursor < p.Offset {
-		p.Offset = p.Cursor
-	}
-
-	if p.Cursor >= p.Offset+visibleCards {
-		p.Offset = p.Cursor - visibleCards + 1
-	}
+func (p *Panel) visibleCards() int {
+	return max(p.Height/cardLines, 1)
 }
+
+const pickerReservedLines = 3 // header + hint + separator
 
 func (p *Panel) clampPickerScroll() {
 	pk := p.Picker
-	visibleRows := max(
-		// header + hint + separator
-		p.Height-3, 1)
+	visibleRows := max(p.Height-pickerReservedLines, 1)
 
 	if pk.Cursor < pk.Offset {
 		pk.Offset = pk.Cursor
@@ -237,7 +230,7 @@ func (p *Panel) clampPickerScroll() {
 
 func (p *Panel) viewPicker() string {
 	pk := p.Picker
-	t := types.CurrentTheme
+	t := p.Theme
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
 	detailStyle := lipgloss.NewStyle().Foreground(t.Dim)
 	selectedBg := lipgloss.NewStyle().Bold(true).Foreground(t.Bright).Background(t.SelectedBg)
@@ -256,7 +249,7 @@ func (p *Panel) viewPicker() string {
 		pk.Suggestion.SubjectKind, accentStyle.Render(pk.Suggestion.ActionName)))
 	countLine := detailStyle.Render(fmt.Sprintf("  %d/%d selected", selectedCount, len(pk.Suggestion.Subjects)))
 
-	visibleRows := max(p.Height-3, 1)
+	visibleRows := max(p.Height-pickerReservedLines, 1)
 
 	end := min(pk.Offset+visibleRows, len(pk.Suggestion.Subjects))
 
@@ -279,9 +272,7 @@ func (p *Panel) viewPicker() string {
 		rows = append(rows, row)
 	}
 
-	for len(rows) < visibleRows {
-		rows = append(rows, "")
-	}
+	rows = panels.PadRows(rows, visibleRows)
 
 	hint := detailStyle.Render("  Space: toggle  |  a: all  n: none  |  Enter: execute  |  Esc: cancel")
 
@@ -289,7 +280,7 @@ func (p *Panel) viewPicker() string {
 }
 
 func (p *Panel) viewCards() string {
-	t := types.CurrentTheme
+	t := p.Theme
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
 	detailStyle := lipgloss.NewStyle().Foreground(t.Dim)
 	selectedBg := lipgloss.NewStyle().Background(t.SelectedBg)
@@ -310,15 +301,14 @@ func (p *Panel) viewCards() string {
 		return header + "\n" + msg
 	}
 
-	visibleCards := max(p.Height/cardLines, 1)
+	visible := p.visibleCards()
 
 	var rows []string
 
-	end := min(p.Offset+visibleCards, len(p.Suggestions))
-
+	start, end := p.VisibleRange(len(p.Suggestions), visible)
 	contentWidth := p.Width - 4
 
-	for i := p.Offset; i < end; i++ {
+	for i := start; i < end; i++ {
 		sug := p.Suggestions[i]
 		selected := i == p.Cursor
 
@@ -375,10 +365,7 @@ func (p *Panel) viewCards() string {
 	}
 
 	usedLines := len(rows) * cardLines
-	for usedLines < p.Height {
-		rows = append(rows, "")
-		usedLines++
-	}
+	rows = panels.PadRows(rows, usedLines+(p.Height-usedLines))
 
 	// Adapt hint based on whether the selected suggestion has multiple subjects.
 	hint := "  Enter: execute  |  ↑↓: navigate"

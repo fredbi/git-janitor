@@ -4,7 +4,6 @@ package types
 import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/config"
-	"github.com/fredbi/git-janitor/internal/engine"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -50,19 +49,16 @@ func (th Theme) Name() string {
 	return th.ThemeName
 }
 
-// CurrentTheme is the active theme, accessed by all panels for rendering.
-var CurrentTheme *Theme //nolint:gochecknoglobals
-
 // RepoInfoMsg is sent when background git inspection completes.
 //
 // It consolidates repo information from different sources (e.g. git, github).
 type RepoInfoMsg struct {
-	Info *engine.RepoInfo
+	Info *models.RepoInfo
 }
 
 // RepoRefreshMsg is sent after a fetch + re-inspect completes.
 type RepoRefreshMsg struct {
-	Info *engine.RepoInfo
+	Info *models.RepoInfo
 }
 
 // ScanResultMsg is sent when a background scan completes.
@@ -120,5 +116,5 @@ type CopyToClipboardMsg struct {
 // GitHubInfoMsg is sent when background GitHub API fetch completes.
 type GitHubInfoMsg struct {
 	RepoPath string
-	Data     *engine.RepoInfo
+	Data     *models.RepoInfo
 }

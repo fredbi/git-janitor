@@ -125,4 +125,11 @@ const (
 	CollectFast
 	CollectForceRefresh
 	CollectSecurityAlerts
+	CollectPlatform // collect hosting-platform metadata (GitHub/GitLab API)
+)
+
+type EvaluateOption uint8
+
+const (
+	EvaluateAll EvaluateOption = iota
 )

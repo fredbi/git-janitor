@@ -4,7 +4,7 @@ import (
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
-// SeverityBullet returns a colored emoji for the given engine.Severity.
+// SeverityBullet returns a colored emoji for the given models.Severity.
 func SeverityBullet(s models.Severity) string {
 	switch s {
 	case models.SeverityCritical:

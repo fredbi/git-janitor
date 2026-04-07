@@ -8,7 +8,6 @@ import (
 	"iter"
 	"strings"
 
-	"github.com/fredbi/git-janitor/internal/github/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -30,16 +29,15 @@ func NewSecurityNotEnabled() SecurityNotEnabled {
 	}
 }
 
-func (c SecurityNotEnabled) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
+func (c SecurityNotEnabled) Evaluate(_ context.Context, repoInfo *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	if repoInfo.Platform == nil {
+		return nil, nil
 	}
 
-	return c.evaluate(info)
+	return c.evaluate(repoInfo.Platform)
 }
 
-func (c SecurityNotEnabled) evaluate(data *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c SecurityNotEnabled) evaluate(data *models.PlatformInfo) (iter.Seq[models.Alert], error) {
 	// Security not queried by config — skip silently.
 	if data.SecuritySkipped {
 		return noAlert(c.Name())
@@ -91,16 +89,15 @@ func NewSecurityAlerts() SecurityAlerts {
 	}
 }
 
-func (c SecurityAlerts) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
+func (c SecurityAlerts) Evaluate(_ context.Context, repoInfo *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	if repoInfo.Platform == nil {
+		return nil, nil
 	}
 
-	return c.evaluate(info)
+	return c.evaluate(repoInfo.Platform)
 }
 
-func (c SecurityAlerts) evaluate(data *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c SecurityAlerts) evaluate(data *models.PlatformInfo) (iter.Seq[models.Alert], error) {
 	if data.SecuritySkipped {
 		return noAlert(c.Name())
 	}

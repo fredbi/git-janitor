@@ -2,6 +2,8 @@ package backend
 
 import (
 	"testing"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 func TestParseStatus_BranchHeaders(t *testing.T) {
@@ -124,12 +126,12 @@ func TestParseStatus_Empty(t *testing.T) {
 }
 
 func TestStatus_IsDirty(t *testing.T) {
-	clean := Status{}
+	clean := models.Status{}
 	if clean.IsDirty() {
 		t.Error("Status with no entries should not be dirty")
 	}
 
-	dirty := Status{Entries: []StatusEntry{{XY: ".M", Path: "foo.go"}}}
+	dirty := models.Status{Entries: []models.StatusEntry{{XY: ".M", Path: "foo.go"}}}
 	if !dirty.IsDirty() {
 		t.Error("Status with entries should be dirty")
 	}

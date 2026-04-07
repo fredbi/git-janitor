@@ -32,10 +32,9 @@ func NewOpenInBrowser() OpenInBrowser {
 
 func (OpenInBrowser) ApplyTo() models.SubjectKind { return models.SubjectRepo }
 
-func (a OpenInBrowser) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
+func (a OpenInBrowser) Execute(ctx context.Context, repoInfo *models.RepoInfo, subjects []string) (models.Result, error) {
+	if repoInfo.Platform == nil {
+		return models.Result{}, errors.New("no platform info available")
 	}
 
 	runner, err := runnerCtx(ctx)
@@ -43,10 +42,10 @@ func (a OpenInBrowser) Execute(ctx context.Context, subjects []string) (models.R
 		return models.Result{}, err
 	}
 
-	return a.execute(ctx, runner, info, subjects)
+	return a.execute(ctx, runner, repoInfo.Platform, subjects)
 }
 
-func (a OpenInBrowser) execute(ctx context.Context, _ *backend.Runner, _ *backend.RepoInfo, subjects []string) (models.Result, error) {
+func (a OpenInBrowser) execute(ctx context.Context, _ *backend.Runner, _ *models.PlatformInfo, subjects []string) (models.Result, error) {
 	if len(subjects) == 0 {
 		return models.Result{}, errors.New("no URL provided")
 	}

@@ -3,45 +3,9 @@ package backend
 import (
 	"context"
 	"strings"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
-
-// ConfigScope indicates where a git config value is defined.
-type ConfigScope string
-
-const (
-	ScopeSystem   ConfigScope = "system"
-	ScopeGlobal   ConfigScope = "global"
-	ScopeLocal    ConfigScope = "local"
-	ScopeWorktree ConfigScope = "worktree"
-	ScopeCommand  ConfigScope = "command"
-	ScopeUnset    ConfigScope = ""
-)
-
-// ConfigEntry holds a single git config value with its origin scope.
-type ConfigEntry struct {
-	// Key is the config key (e.g. "user.email").
-	Key string
-
-	// Value is the effective value. Empty if unset.
-	Value string
-
-	// Scope indicates where the value is defined (global, local, etc.).
-	// Empty (ScopeUnset) if the key is not configured.
-	Scope ConfigScope
-
-	// IsLocal reports whether this value is set in the repo's local config
-	// (as opposed to inherited from global/system).
-	IsLocal bool
-}
-
-// RepoConfig holds a curated set of git config values for a repository.
-type RepoConfig struct {
-	UserEmail  ConfigEntry
-	UserName   ConfigEntry
-	SigningKey ConfigEntry
-	CommitSign ConfigEntry
-	TagSign    ConfigEntry
-}
 
 // configPattern matches the keys we query in a single git config --get-regexp call.
 const configPattern = `^(user\.(email|name|signingkey)|commit\.gpgsign|tag\.gpgsign)$`
@@ -49,8 +13,8 @@ const configPattern = `^(user\.(email|name|signingkey)|commit\.gpgsign|tag\.gpgs
 // Config queries the curated set of git config values for the repository
 // in a single git command, reporting the effective value and whether it's
 // local or inherited.
-func (r *Runner) Config(ctx context.Context) RepoConfig {
-	var rc RepoConfig
+func (r *Runner) Config(ctx context.Context) models.RepoConfig {
+	var rc models.RepoConfig
 
 	out, err := r.run(ctx, cmdConfigGetRegexp(configPattern)...)
 	if err != nil {
@@ -79,8 +43,8 @@ func (r *Runner) Config(ctx context.Context) RepoConfig {
 //
 // If a key appears multiple times (e.g. global + local override), the last
 // occurrence wins (highest precedence).
-func parseConfigEntries(output string) map[string]ConfigEntry {
-	entries := make(map[string]ConfigEntry)
+func parseConfigEntries(output string) map[string]models.ConfigEntry {
+	entries := make(map[string]models.ConfigEntry)
 
 	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
@@ -98,13 +62,13 @@ func parseConfigEntries(output string) map[string]ConfigEntry {
 		key, value, _ := strings.Cut(rest, " ")
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
-		s := ConfigScope(strings.TrimSpace(scope))
+		s := models.ConfigScope(strings.TrimSpace(scope))
 
-		entries[key] = ConfigEntry{
+		entries[key] = models.ConfigEntry{
 			Key:     key,
 			Value:   value,
 			Scope:   s,
-			IsLocal: s == ScopeLocal || s == ScopeWorktree,
+			IsLocal: s == models.ScopeLocal || s == models.ScopeWorktree,
 		}
 	}
 

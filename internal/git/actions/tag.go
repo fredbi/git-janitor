@@ -25,12 +25,7 @@ func NewPushTag() PushTag {
 
 func (PushTag) ApplyTo() models.SubjectKind { return models.SubjectTag }
 
-func (a PushTag) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a PushTag) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -39,7 +34,7 @@ func (a PushTag) Execute(ctx context.Context, subjects []string) (models.Result,
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a PushTag) execute(ctx context.Context, r *backend.Runner, _ *backend.RepoInfo, subjects []string) (models.Result, error) {
+func (a PushTag) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, subjects []string) (models.Result, error) {
 	for _, name := range subjects {
 		result := r.PushTag(ctx, name)
 		if !result.OK {
@@ -68,12 +63,7 @@ func NewFetchTags() FetchTags {
 
 func (FetchTags) ApplyTo() models.SubjectKind { return models.SubjectRepo }
 
-func (a FetchTags) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a FetchTags) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -82,7 +72,7 @@ func (a FetchTags) Execute(ctx context.Context, subjects []string) (models.Resul
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a FetchTags) execute(ctx context.Context, r *backend.Runner, _ *backend.RepoInfo, _ []string) (models.Result, error) {
+func (a FetchTags) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, _ []string) (models.Result, error) {
 	err := r.FetchAllTags(ctx)
 	if err != nil {
 		return models.Result{OK: false, Message: err.Error()}, nil //nolint:nilerr // error is handled and wrapped in result

@@ -6,7 +6,6 @@ import (
 	"iter"
 	"strings"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -27,16 +26,11 @@ func NewLargeFiles() LargeFiles {
 }
 
 // Evaluate inspects the FileStats from RepoInfo.
-func (c LargeFiles) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c LargeFiles) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c LargeFiles) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c LargeFiles) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if info.FileStats == nil || len(info.FileStats.LargeFiles) == 0 {
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),
@@ -75,16 +69,11 @@ func NewBinaryFiles() BinaryFiles {
 }
 
 // Evaluate inspects the FileStats from RepoInfo.
-func (c BinaryFiles) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c BinaryFiles) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c BinaryFiles) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c BinaryFiles) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if info.FileStats == nil || len(info.FileStats.BinaryFiles) == 0 {
 		return noAlert(c.Name())
 	}

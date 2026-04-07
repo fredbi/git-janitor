@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 package alerts
 
 import (
@@ -8,6 +10,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/models"
 	"github.com/fredbi/git-janitor/internal/ux/gadgets"
+	"github.com/fredbi/git-janitor/internal/ux/key"
+	"github.com/fredbi/git-janitor/internal/ux/panels"
 	"github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -20,16 +24,14 @@ const alertCardLines = 3
 //   - Line 2: detail text (dimmed)
 //   - Line 3: separator
 type Panel struct {
+	panels.Base
+
 	Alerts []models.Alert // real alerts from the engine
-	Cursor int
-	Offset int // scroll offset in cards (not lines)
-	Width  int
-	Height int
 }
 
 // New creates a new Panel with no entries.
-func New() Panel {
-	return Panel{}
+func New(theme *types.Theme) Panel {
+	return Panel{Base: panels.Base{Theme: theme}}
 }
 
 // SetAlerts replaces the displayed alerts with new ones.
@@ -45,8 +47,7 @@ func (p *Panel) SetAlerts(alerts []models.Alert) {
 		p.Alerts = append(p.Alerts, a)
 	}
 
-	p.Cursor = 0
-	p.Offset = 0
+	p.ResetScroll()
 }
 
 // SelectedAlert returns the currently selected alert, if any.
@@ -59,12 +60,8 @@ func (p *Panel) SelectedAlert() (models.Alert, bool) {
 }
 
 func (p *Panel) SetSize(w, h int) {
-	p.Width = w
-	p.Height = max(
-		// reserve 1 line for header
-		h-1, alertCardLines)
-
-	p.clampScroll()
+	p.Base.SetSize(w, h, 1, alertCardLines)
+	p.ClampScroll(p.visibleCards())
 }
 
 func (p *Panel) Update(msg tea.Msg) tea.Cmd {
@@ -73,34 +70,21 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 
-	switch km.String() {
-	case "up", "k":
-		if p.Cursor > 0 {
-			p.Cursor--
-			p.clampScroll()
-		}
-	case "down", "j":
-		if p.Cursor < len(p.Alerts)-1 {
-			p.Cursor++
-			p.clampScroll()
-		}
-	case "home", "g":
-		p.Cursor = 0
-		p.clampScroll()
-	case "end", "G":
-		if len(p.Alerts) > 0 {
-			p.Cursor = len(p.Alerts) - 1
-		}
+	if p.NavigateKey(km, len(p.Alerts)) {
+		p.ClampScroll(p.visibleCards())
 
-		p.clampScroll()
-	case "enter":
+		return nil
+	}
+
+	switch key.MsgBinding(km) {
+	case key.Enter:
 		// Show suggested actions for the selected alert.
 		if len(p.Alerts) > 0 {
 			return func() tea.Msg {
 				return types.ShowSuggestionsMsg{AlertIndex: p.Cursor}
 			}
 		}
-	case "c":
+	case key.C:
 		// Copy URL from the selected alert's suggestion to clipboard.
 		if url := p.selectedAlertURL(); url != "" {
 			return func() tea.Msg {
@@ -113,7 +97,7 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (p *Panel) View() string {
-	t := types.CurrentTheme
+	t := p.Theme
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
 	detailStyle := lipgloss.NewStyle().Foreground(t.Dim)
 	selectedBg := lipgloss.NewStyle().Background(t.SelectedBg)
@@ -135,7 +119,7 @@ func (p *Panel) View() string {
 		return header + "\n" + empty
 	}
 
-	visibleCards := max(p.Height/alertCardLines, 1)
+	visible := p.visibleCards()
 
 	const indent = 4
 	contentWidth := p.Width - indent
@@ -143,9 +127,9 @@ func (p *Panel) View() string {
 
 	var rows []string
 
-	end := min(p.Offset+visibleCards, len(p.Alerts))
+	start, end := p.VisibleRange(len(p.Alerts), visible)
 
-	for i := p.Offset; i < end; i++ {
+	for i := start; i < end; i++ {
 		a := p.Alerts[i]
 		selected := i == p.Cursor
 
@@ -180,11 +164,7 @@ func (p *Panel) View() string {
 
 	// Pad remaining space.
 	usedLines := len(rows) * alertCardLines
-
-	for usedLines < p.Height {
-		rows = append(rows, "")
-		usedLines++
-	}
+	rows = panels.PadRows(rows, usedLines+(p.Height-usedLines))
 
 	return header + "\n" + strings.Join(rows, "\n")
 }
@@ -205,14 +185,6 @@ func (p *Panel) selectedAlertURL() string {
 	return ""
 }
 
-func (p *Panel) clampScroll() {
-	visibleCards := max(p.Height/alertCardLines, 1)
-
-	if p.Cursor < p.Offset {
-		p.Offset = p.Cursor
-	}
-
-	if p.Cursor >= p.Offset+visibleCards {
-		p.Offset = p.Cursor - visibleCards + 1
-	}
+func (p *Panel) visibleCards() int {
+	return max(p.Height/alertCardLines, 1)
 }

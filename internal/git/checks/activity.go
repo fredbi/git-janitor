@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -30,16 +29,11 @@ func NewActivityStale() ActivityStale {
 }
 
 // Evaluate inspects the Activity from RepoInfo.
-func (c ActivityStale) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c ActivityStale) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c ActivityStale) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c ActivityStale) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if info.Activity == nil {
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),
@@ -58,7 +52,7 @@ func (c ActivityStale) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert],
 	a := info.Activity
 
 	switch {
-	case a.Staleness == backend.StalenessDormant:
+	case a.Staleness == models.StalenessDormant:
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),
 			Severity:  models.SeverityLow,
@@ -66,7 +60,7 @@ func (c ActivityStale) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert],
 			Detail:    fmt.Sprintf("no merged commit in the past 360 days (last commit: %s)", info.LastCommit.Format("2006-01-02")),
 		}), nil
 
-	case a.Staleness == backend.StalenessStale:
+	case a.Staleness == models.StalenessStale:
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),
 			Severity:  models.SeverityLow,
@@ -93,7 +87,7 @@ func (c ActivityStale) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert],
 }
 
 // hasLaggingBranch reports whether any local branch is behind its upstream.
-func hasLaggingBranch(info *backend.RepoInfo) bool {
+func hasLaggingBranch(info *models.RepoInfo) bool {
 	for _, b := range info.Branches {
 		if !b.IsRemote && b.HasUpstream() && b.Behind > 0 {
 			return true

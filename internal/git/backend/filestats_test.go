@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 func TestIntegration_FileStats(t *testing.T) {
@@ -13,7 +15,7 @@ func TestIntegration_FileStats(t *testing.T) {
 
 	t.Logf("large files (>1MB): %d", len(stats.LargeFiles))
 	for _, f := range stats.LargeFiles {
-		t.Logf("  %s (%s)", f.Path, formatBytes(f.Size))
+		t.Logf("  %s (%s)", f.Path, models.FormatBytes(f.Size))
 	}
 
 	t.Logf("top blobs: %d", len(stats.LargeBlobs))
@@ -24,7 +26,7 @@ func TestIntegration_FileStats(t *testing.T) {
 			break
 		}
 
-		t.Logf("  %s %s (%s)", b.Hash[:8], b.Path, formatBytes(b.Size))
+		t.Logf("  %s %s (%s)", b.Hash[:8], b.Path, models.FormatBytes(b.Size))
 	}
 
 	t.Logf("binary files: %d", len(stats.BinaryFiles))
@@ -72,12 +74,12 @@ func TestIntegration_FileStats_ExternalRepo(t *testing.T) {
 
 	t.Logf("large files (>100KB): %d", len(stats.LargeFiles))
 	for _, f := range stats.LargeFiles {
-		t.Logf("  %s (%s)", f.Path, formatBytes(f.Size))
+		t.Logf("  %s (%s)", f.Path, models.FormatBytes(f.Size))
 	}
 
 	t.Logf("top blobs: %d", len(stats.LargeBlobs))
 	for _, b := range stats.LargeBlobs {
-		t.Logf("  %s %s (%s)", b.Hash[:8], b.Path, formatBytes(b.Size))
+		t.Logf("  %s %s (%s)", b.Hash[:8], b.Path, models.FormatBytes(b.Size))
 	}
 
 	t.Logf("binary files: %d", len(stats.BinaryFiles))

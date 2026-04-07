@@ -235,3 +235,7 @@ func cmdRevListCount(since string) []string {
 func cmdShortlog(since string) []string {
 	return []string{"shortlog", "-sne", "--since=" + since, "HEAD"}
 }
+
+func cmdHashObject() []string {
+	return []string{"hash-object", "-t", "tree", "/dev/null"}
+}

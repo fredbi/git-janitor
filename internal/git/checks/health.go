@@ -5,7 +5,6 @@ import (
 	"iter"
 	"strings"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -27,16 +26,11 @@ func NewHealthGCAdvised() HealthGCAdvised {
 }
 
 // Evaluate inspects the HealthReport from RepoInfo.
-func (c HealthGCAdvised) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c HealthGCAdvised) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c HealthGCAdvised) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c HealthGCAdvised) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if info.Health == nil || !info.Health.GCAdvised {
 		return noAlert(c.Name())
 	}
@@ -72,16 +66,11 @@ func NewSizeRepackAdvised() SizeRepackAdvised {
 }
 
 // Evaluate inspects the RepoSize from RepoInfo.
-func (c SizeRepackAdvised) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c SizeRepackAdvised) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c SizeRepackAdvised) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c SizeRepackAdvised) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if info.Size == nil || !info.Size.RepackAdvised {
 		return noAlert(c.Name())
 	}
@@ -116,16 +105,11 @@ func NewHealthFSCK() HealthFSCK {
 }
 
 // Evaluate inspects the HealthReport for fsck errors.
-func (c HealthFSCK) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c HealthFSCK) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c HealthFSCK) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c HealthFSCK) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if info.Health == nil || len(info.Health.FSCKErrors) == 0 {
 		return noAlert(c.Name())
 	}

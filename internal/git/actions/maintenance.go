@@ -25,12 +25,7 @@ func NewRunGC() RunGC {
 
 func (RunGC) ApplyTo() models.SubjectKind { return models.SubjectRepo }
 
-func (a RunGC) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a RunGC) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -39,10 +34,10 @@ func (a RunGC) Execute(ctx context.Context, subjects []string) (models.Result, e
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a RunGC) execute(ctx context.Context, r *backend.Runner, _ *backend.RepoInfo, _ []string) (models.Result, error) {
+func (a RunGC) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, _ []string) (models.Result, error) {
 	result := r.Compact(ctx)
 
-	return models.Result{OK: result.OK, Message: result.Message}, nil
+	return models.Result(result), nil
 }
 
 // RunGCAggressive runs git gc --aggressive (deep repack).
@@ -64,12 +59,7 @@ func NewRunGCAggressive() RunGCAggressive {
 func (RunGCAggressive) ApplyTo() models.SubjectKind { return models.SubjectRepo }
 func (RunGCAggressive) Destructive() bool           { return true }
 
-func (a RunGCAggressive) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a RunGCAggressive) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -78,8 +68,8 @@ func (a RunGCAggressive) Execute(ctx context.Context, subjects []string) (models
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a RunGCAggressive) execute(ctx context.Context, r *backend.Runner, _ *backend.RepoInfo, _ []string) (models.Result, error) {
+func (a RunGCAggressive) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, _ []string) (models.Result, error) {
 	result := r.CompactAggressive(ctx)
 
-	return models.Result{OK: result.OK, Message: result.Message}, nil
+	return models.Result(result), nil
 }

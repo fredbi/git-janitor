@@ -6,54 +6,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
-
-// Staleness classification constants.
-const (
-	StalenessActive  = "active"  // commits in the last 30 days
-	StalenessRecent  = "recent"  // commits in the last 90 days
-	StalenessStale   = "stale"   // commits in the last 360 days
-	StalenessDormant = "dormant" // no commits in the last 360 days
-)
-
-// Activity holds commit activity metrics for a repository.
-//
-// All windows are rolling: 7d, 30d, 90d, 360d from now.
-// Counts are on HEAD only (merged activity).
-type Activity struct {
-	// Commit counts over rolling windows.
-	Commits7d   int
-	Commits30d  int
-	Commits90d  int
-	Commits360d int
-
-	// TagsLast360d is the number of tags on the default branch created in the last 360 days.
-	// Derived from the tag list — no extra git command.
-	TagsLast360d int
-
-	// Staleness is derived from commit counts:
-	//   "active"  — Commits30d > 0
-	//   "recent"  — Commits90d > 0
-	//   "stale"   — Commits360d > 0
-	//   "dormant" — otherwise
-	Staleness string
-
-	// Authors is populated on-demand via LoadAuthors.
-	Authors []AuthorActivity
-}
-
-// AuthorActivity holds per-author commit counts.
-type AuthorActivity struct {
-	Name    string
-	Email   string
-	Commits int
-}
 
 // Activity collects commit activity metrics on HEAD using rolling windows.
-func (r *Runner) Activity(ctx context.Context) Activity {
+func (r *Runner) Activity(ctx context.Context) models.Activity {
 	now := time.Now()
 
-	var a Activity
+	var a models.Activity
 
 	a.Commits7d = r.commitCount(ctx, now.AddDate(0, 0, -7))
 	a.Commits30d = r.commitCount(ctx, now.AddDate(0, 0, -30))
@@ -67,7 +28,7 @@ func (r *Runner) Activity(ctx context.Context) Activity {
 
 // LoadAuthors populates the Authors field with per-author commit counts
 // for the given rolling window (e.g. 360 days).
-func (r *Runner) LoadAuthors(ctx context.Context, sinceDays int) []AuthorActivity {
+func (r *Runner) LoadAuthors(ctx context.Context, sinceDays int) []models.AuthorActivity {
 	since := time.Now().AddDate(0, 0, -sinceDays)
 
 	out, err := r.run(ctx, cmdShortlog(since.Format("2006-01-02"))...)
@@ -76,25 +37,6 @@ func (r *Runner) LoadAuthors(ctx context.Context, sinceDays int) []AuthorActivit
 	}
 
 	return parseShortlog(out)
-}
-
-// CountTagsInWindow counts how many tags from the given list fall within the last nDays.
-func CountTagsInWindow(tags []Tag, nDays int) int {
-	cutoff := time.Now().AddDate(0, 0, -nDays)
-
-	var count int
-
-	for i := range tags {
-		if tags[i].RemoteOnly {
-			continue
-		}
-
-		if tags[i].Date.After(cutoff) {
-			count++
-		}
-	}
-
-	return count
 }
 
 // commitCount returns the number of commits on HEAD since the given time.
@@ -110,23 +52,23 @@ func (r *Runner) commitCount(ctx context.Context, since time.Time) int {
 }
 
 // deriveStaleness classifies activity based on commit counts.
-func deriveStaleness(a Activity) string {
+func deriveStaleness(a models.Activity) string {
 	switch {
 	case a.Commits30d > 0:
-		return StalenessActive
+		return models.StalenessActive
 	case a.Commits90d > 0:
-		return StalenessRecent
+		return models.StalenessRecent
 	case a.Commits360d > 0:
-		return StalenessStale
+		return models.StalenessStale
 	default:
-		return StalenessDormant
+		return models.StalenessDormant
 	}
 }
 
 // parseShortlog parses the output of git shortlog -sne.
 // Format: "  <count>\t<Name> <email>".
-func parseShortlog(output string) []AuthorActivity {
-	var authors []AuthorActivity
+func parseShortlog(output string) []models.AuthorActivity {
+	var authors []models.AuthorActivity
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -148,7 +90,7 @@ func parseShortlog(output string) []AuthorActivity {
 
 		name, email := parseNameEmail(rest)
 
-		authors = append(authors, AuthorActivity{
+		authors = append(authors, models.AuthorActivity{
 			Name:    name,
 			Email:   email,
 			Commits: count,

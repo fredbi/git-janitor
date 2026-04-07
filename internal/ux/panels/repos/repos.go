@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/config"
 	"github.com/fredbi/git-janitor/internal/models"
+	"github.com/fredbi/git-janitor/internal/ux/key"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -24,6 +25,7 @@ type RootTab struct {
 
 // Panel is a tabbed left panel where each tab represents a configured root.
 type Panel struct {
+	Theme  *uxtypes.Theme
 	Tabs   []RootTab
 	Active int // index of the active tab
 	Width  int
@@ -39,14 +41,14 @@ type Panel struct {
 }
 
 // New creates a new Panel from the given configuration.
-func New(cfg *config.Config) Panel {
+func New(cfg *config.Config, theme *uxtypes.Theme) Panel {
 	fi := textinput.New()
 	fi.Placeholder = "filter (regexp)"
 	fi.Prompt = " 🔍 "
 	fi.CharLimit = 128
 	fi.Width = 40
 
-	p := Panel{Filter: fi}
+	p := Panel{Theme: theme, Filter: fi}
 	p.RebuildTabs(cfg)
 
 	return p
@@ -82,7 +84,7 @@ func (p *Panel) RebuildTabs(cfg *config.Config) {
 }
 
 func (p *Panel) makeTab(name string) RootTab {
-	delegate := NewRepoDelegate()
+	delegate := NewRepoDelegate(p.Theme)
 
 	l := list.New(nil, delegate, 0, 0)
 	l.Title = name
@@ -102,10 +104,16 @@ func (p *Panel) makeTab(name string) RootTab {
 
 // RebuildDelegate recreates the list delegate with current theme colors.
 func (p *Panel) RebuildDelegate() {
-	d := NewRepoDelegate()
+	d := NewRepoDelegate(p.Theme)
 	for i := range p.Tabs {
 		p.Tabs[i].List.SetDelegate(d)
 	}
+}
+
+// SetTheme updates the theme and rebuilds the delegate to reflect new colors.
+func (p *Panel) SetTheme(theme *uxtypes.Theme) {
+	p.Theme = theme
+	p.RebuildDelegate()
 }
 
 // TabCount returns the number of tabs.
@@ -186,17 +194,15 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (p *Panel) handleKey(msg tea.KeyMsg) tea.Cmd {
-	key := msg.String()
-
-	switch key {
-	case "up", "down", "k", "j", "pgup", "pgdown", "home", "end":
+	switch key.MsgBinding(msg) {
+	case key.Up, key.Down, key.K, key.J, key.PageUp, key.PageDown, key.Home, key.End:
 		// Navigation keys go to the list.
 		var cmd tea.Cmd
 		p.Tabs[p.Active].List, cmd = p.Tabs[p.Active].List.Update(msg)
 
 		return cmd
 
-	case "esc":
+	case key.Esc:
 		// Clear the filter.
 		if p.Filter.Value() != "" {
 			p.Filter.SetValue("")
@@ -424,7 +430,7 @@ func (p *Panel) View(focused bool) string {
 	tabBar := p.renderTabBar()
 
 	// --- Hint ---
-	t := uxtypes.CurrentTheme
+	t := p.Theme
 	hintStyle := lipgloss.NewStyle().
 		Foreground(t.Dim).
 		PaddingLeft(1)
@@ -472,12 +478,12 @@ func (p *Panel) renderFilterRow() string {
 	row := p.Filter.View()
 
 	if p.FilterErr {
-		errHint := lipgloss.NewStyle().Foreground(uxtypes.CurrentTheme.Error).Render(" (invalid regexp)")
+		errHint := lipgloss.NewStyle().Foreground(p.Theme.Error).Render(" (invalid regexp)")
 		row += errHint
 	} else if p.FilterRe != nil && p.Active >= 0 && p.Active < len(p.Tabs) {
 		total := len(p.Tabs[p.Active].AllItems)
 		shown := len(p.Tabs[p.Active].List.Items())
-		countHint := lipgloss.NewStyle().Foreground(uxtypes.CurrentTheme.Dim).
+		countHint := lipgloss.NewStyle().Foreground(p.Theme.Dim).
 			Render(fmt.Sprintf(" %d/%d", shown, total))
 		row += countHint
 	}
@@ -487,7 +493,7 @@ func (p *Panel) renderFilterRow() string {
 
 // renderTabBar builds the tab bar string with elision.
 func (p *Panel) renderTabBar() string {
-	t := uxtypes.CurrentTheme
+	t := p.Theme
 	tabBarStyle := lipgloss.NewStyle().PaddingLeft(1)
 
 	activeTabStyle := lipgloss.NewStyle().

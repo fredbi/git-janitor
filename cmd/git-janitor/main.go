@@ -49,11 +49,6 @@ func main() {
 		registry.With(git.AllActions(), github.AllActions()),
 	)
 
-	// registers all supported runners
-	runners := registry.New[ifaces.RunnerFactory](
-		registry.With(git.RunnerFactory(), github.RunnerFactory()),
-	)
-
 	// injects all dependencies into the UI model
 	model := ux.New(
 		ux.WithConfig(cfg),
@@ -64,7 +59,6 @@ func main() {
 				engine.WithConfig(cfg),
 				engine.WithChecks(checks),
 				engine.WithActions(actions),
-				engine.WithRunners(runners),
 			),
 		),
 	)

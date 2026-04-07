@@ -32,10 +32,9 @@ func NewSetRepoDescription() SetRepoDescription {
 
 func (SetRepoDescription) ApplyTo() models.SubjectKind { return models.SubjectRepo }
 
-func (a SetRepoDescription) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
+func (a SetRepoDescription) Execute(ctx context.Context, repoInfo *models.RepoInfo, subjects []string) (models.Result, error) {
+	if repoInfo.Platform == nil {
+		return models.Result{}, errors.New("no platform info available")
 	}
 
 	runner, err := runnerCtx(ctx)
@@ -43,10 +42,10 @@ func (a SetRepoDescription) Execute(ctx context.Context, subjects []string) (mod
 		return models.Result{}, err
 	}
 
-	return a.execute(ctx, runner, info, subjects)
+	return a.execute(ctx, runner, repoInfo.Platform, subjects)
 }
 
-func (a SetRepoDescription) execute(ctx context.Context, client *backend.Runner, data *backend.RepoInfo, params []string) (models.Result, error) {
+func (a SetRepoDescription) execute(ctx context.Context, client *backend.Runner, data *models.PlatformInfo, params []string) (models.Result, error) {
 	if data == nil {
 		return models.Result{}, errors.New("backend repo data is required")
 	}

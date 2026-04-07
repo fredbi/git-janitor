@@ -15,10 +15,11 @@ Navigation
 ──────────
   Tab / Shift+Tab    Cycle focus between Repositories, Right pane, and Input
   j / k  or  ↑ / ↓  Scroll within the focused list
+  g / G              Jump to top / bottom
+  PgUp / PgDn        Page up / page down
   /                  Jump to command input (pre-fills "/")
-  Esc                Close popup, clear filter, or leave command input
-  q                  Quit (when not typing a command)
-  Ctrl+C / Ctrl+Q    Quit immediately
+  Esc / q            Close popup, clear filter, or leave command input
+  Ctrl+C / Ctrl+Q    Quit
   Ctrl+R             Fetch (git fetch --all --tags) and refresh selected repo
   Ctrl+H             Open this help popup
 
@@ -107,6 +108,7 @@ Press Esc or Ctrl+H to close this help.
 
 // Popup is a scrollable overlay that displays help text.
 type Popup struct {
+	Theme    *uxtypes.Theme
 	Viewport viewport.Model
 	Visible  bool
 	Width    int
@@ -114,11 +116,11 @@ type Popup struct {
 }
 
 // New creates a new Popup.
-func New() Popup {
+func New(theme *uxtypes.Theme) Popup {
 	vp := viewport.New(0, 0)
 	vp.SetContent(helpText)
 
-	return Popup{Viewport: vp}
+	return Popup{Theme: theme, Viewport: vp}
 }
 
 // SetSize recalculates the popup dimensions (centered, ~80% of terminal).
@@ -174,7 +176,7 @@ func (h *Popup) View(termWidth, termHeight int) string {
 
 	border := lipgloss.NewStyle().
 		Border(lipgloss.DoubleBorder()).
-		BorderForeground(uxtypes.CurrentTheme.Secondary).
+		BorderForeground(h.Theme.Secondary).
 		Width(h.Width-2).
 		Height(h.Height-2).
 		Padding(0, 1)

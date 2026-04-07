@@ -5,7 +5,6 @@ package checks
 import (
 	"testing"
 
-	"github.com/fredbi/git-janitor/internal/github/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -13,7 +12,7 @@ func TestSecurityNotEnabled(t *testing.T) {
 	check := NewSecurityNotEnabled()
 
 	t.Run("all inaccessible with admin", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.HasAdminAccess = true
 		// Defaults: all -1
 		alerts := collectAlerts(t, check, data)
@@ -21,21 +20,21 @@ func TestSecurityNotEnabled(t *testing.T) {
 	})
 
 	t.Run("all inaccessible no admin", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		// Defaults: all -1, no admin
 		alerts := collectAlerts(t, check, data)
 		requireSeverity(t, alerts, models.SeverityInfo)
 	})
 
 	t.Run("one accessible", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.SecretScanningAlerts = 0
 		alerts := collectAlerts(t, check, data)
 		requireSeverity(t, alerts, models.SeverityNone)
 	})
 
 	t.Run("all accessible", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.DependabotAlerts = 0
 		data.CodeScanningAlerts = 0
 		data.SecretScanningAlerts = 0
@@ -48,14 +47,14 @@ func TestSecurityAlerts(t *testing.T) {
 	check := NewSecurityAlerts()
 
 	t.Run("not fetched", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		// All security fields default to -1
 		alerts := collectAlerts(t, check, data)
 		requireSeverity(t, alerts, models.SeverityNone)
 	})
 
 	t.Run("no alerts", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.DependabotAlerts = 0
 		data.CodeScanningAlerts = 0
 		data.SecretScanningAlerts = 0
@@ -64,7 +63,7 @@ func TestSecurityAlerts(t *testing.T) {
 	})
 
 	t.Run("dependabot only", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.DependabotAlerts = 3
 		data.CodeScanningAlerts = 0
 		data.SecretScanningAlerts = -1 // not accessible
@@ -78,7 +77,7 @@ func TestSecurityAlerts(t *testing.T) {
 	})
 
 	t.Run("mixed scanners", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.DependabotAlerts = 2
 		data.CodeScanningAlerts = 1
 		data.SecretScanningAlerts = 1
@@ -92,7 +91,7 @@ func TestSecurityAlerts(t *testing.T) {
 	})
 
 	t.Run("partial access", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.DependabotAlerts = 5
 		data.CodeScanningAlerts = -1   // 403
 		data.SecretScanningAlerts = -1 // 403

@@ -9,7 +9,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fredbi/git-janitor/internal/engine"
 	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/models"
 	actions "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-actions"
@@ -36,6 +35,7 @@ const RightTabCount = 5
 
 // Panel is a tab container for the right Pane.
 type Panel struct {
+	Theme    *uxtypes.Theme
 	Facts    facts.Panel
 	Branches branches.Panel
 	Alerts   alerts.Panel
@@ -56,16 +56,27 @@ type Panel struct {
 }
 
 // New creates a new Panel with default tab sub-panels.
-func New(eng ifaces.Engineer) Panel {
+func New(eng ifaces.Engineer, theme *uxtypes.Theme) Panel {
 	return Panel{
-		Facts:    facts.New(),
-		Branches: branches.New(),
-		Alerts:   alerts.New(),
-		Actions:  actions.New(eng),
-		Recent:   recent.New(),
+		Theme:    theme,
+		Facts:    facts.New(theme),
+		Branches: branches.New(theme),
+		Alerts:   alerts.New(theme),
+		Actions:  actions.New(eng, theme),
+		Recent:   recent.New(theme),
 		Active:   TabFacts,
 		Engine:   eng,
 	}
+}
+
+// SetTheme propagates a new theme to all sub-panels.
+func (p *Panel) SetTheme(theme *uxtypes.Theme) {
+	p.Theme = theme
+	p.Facts.Theme = theme
+	p.Branches.Theme = theme
+	p.Alerts.Theme = theme
+	p.Actions.Theme = theme
+	p.Recent.Theme = theme
 }
 
 // CycleTab advances the active tab forward by one.
@@ -100,21 +111,20 @@ var RightTabDefs = []struct { //nolint:gochecknoglobals // tab definition table
 
 // SetRepoInfo updates all panels with new repo data.
 // If an engine is configured, it evaluates checks and populates the alerts panel.
-func (p *Panel) SetRepoInfo(info *engine.RepoInfo) {
-	p.RepoPath = info.GitInfo.Path
+func (p *Panel) SetRepoInfo(info *models.RepoInfo) {
+	p.RepoPath = info.Path
 	p.Facts.SetInfo(info)
 	p.Branches.SetInfo(info)
 	p.Actions.Clear()
+	p.LastAlerts = nil // clear previous alerts before re-evaluation
 
 	if p.Engine == nil || info.IsEmpty() {
+		p.Alerts.SetAlerts(nil)
+
 		return
 	}
 
-	ctx := context.Background() // TODO: bubbletea context?
-	ctx = p.Engine.WithRunner(ctx, "git-runner", p.RepoPath)
-	ctx = p.Engine.WithRepoInfo(ctx, p.RepoPath, info)
-
-	alertsIter, err := p.Engine.Evaluate(ctx) // TODO: enabled checks are reloaded in Engine with config
+	alertsIter, err := p.Engine.Evaluate(context.Background(), info)
 	if err != nil {
 		return // TODO: we should return an error
 	}
@@ -124,35 +134,23 @@ func (p *Panel) SetRepoInfo(info *engine.RepoInfo) {
 }
 
 // SetGitHubData updates the panel with GitHub API data.
-// It evaluates GitHub checks, merges their alerts with the existing git alerts,
-// and updates the Facts panel with a GitHub sub-section.
-func (p *Panel) SetGitHubData(info *engine.RepoInfo) { // TODO: enabled checks are reloaded in Engine with config
+// It re-evaluates all checks (git + GitHub) so alerts reflect the
+// complete picture, then updates the Facts panel with platform data.
+func (p *Panel) SetGitHubData(info *models.RepoInfo) {
 	p.Facts.SetGitHubData(info)
 
-	if p.Engine == nil || info.Err() != nil {
+	if p.Engine == nil || info.RepoErr() != nil {
 		return
 	}
 
-	ctx := context.Background() // TODO: bubbletea context?
-	originURL := engine.OriginFetchURL(info)
-	if originURL == "" {
-		return
-	}
-	ctx = p.Engine.WithRunner(ctx, "github-runner", originURL)
-	ctx = p.Engine.WithRepoInfo(ctx, p.RepoPath, info)
-	alertsIter, err := p.Engine.Evaluate(ctx)
+	// Re-evaluate all checks with the enriched info (now includes platform data).
+	// The engine returns alerts sorted by severity.
+	alertsIter, err := p.Engine.Evaluate(context.Background(), info)
 	if err != nil {
 		return // TODO: we should return an error
 	}
 
-	// Merge: append GitHub alerts to existing git alerts, re-sort by severity.
-	// TODO: dedupe?
-	p.LastAlerts = slices.AppendSeq(p.LastAlerts, alertsIter)
-
-	slices.SortStableFunc(p.LastAlerts, func(a, b models.Alert) int {
-		return int(b.Severity) - int(a.Severity)
-	})
-
+	p.LastAlerts = slices.Collect(alertsIter)
 	p.Alerts.SetAlerts(p.LastAlerts)
 }
 
@@ -232,7 +230,7 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 // View renders the right panel with its tab bar and active content.
 func (p *Panel) View(focused bool) string {
 	// --- Tab bar ---
-	t := uxtypes.CurrentTheme
+	t := p.Theme
 	tabBarStyle := lipgloss.NewStyle().PaddingLeft(1)
 
 	activeTabStyle := lipgloss.NewStyle().

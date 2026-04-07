@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -26,16 +25,11 @@ func NewDirtyWorktree() DirtyWorktree {
 }
 
 // Evaluate inspects the Status from RepoInfo.
-func (c DirtyWorktree) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c DirtyWorktree) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c DirtyWorktree) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c DirtyWorktree) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if !info.Status.IsDirty() {
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),

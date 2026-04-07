@@ -4,6 +4,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
 // item represents a recent activity entry in the list.
@@ -18,11 +19,12 @@ func (i item) FilterValue() string { return i.title }
 
 // Panel wraps a bubbles/list for the recent-activity tab.
 type Panel struct {
-	List list.Model
+	Theme *uxtypes.Theme
+	List  list.Model
 }
 
 // New creates a new Panel with sample entries.
-func New() Panel {
+func New(theme *uxtypes.Theme) Panel {
 	items := []list.Item{
 		item{title: "Deleted feature/old-login", desc: "2 minutes ago — stale branch removed"},
 		item{title: "Ran git gc", desc: "10 minutes ago — freed 24 MB"},
@@ -43,7 +45,7 @@ func New() Panel {
 	l.SetShowHelp(false)
 	l.SetShowStatusBar(false)
 
-	return Panel{List: l}
+	return Panel{Theme: theme, List: l}
 }
 
 func (p *Panel) SetSize(w, h int) {

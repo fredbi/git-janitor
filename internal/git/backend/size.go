@@ -6,24 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
-
-// RepoSize holds size metrics for a repository.
-type RepoSize struct {
-	// GitDirBytes is the total size of the .git directory on disk.
-	GitDirBytes int64
-
-	// ReachableBytes is the total size of all reachable objects
-	// (git rev-list --disk-usage --all). This excludes unreachable
-	// garbage but includes packed and loose objects.
-	ReachableBytes int64
-
-	// RepackAdvised is true when conditions suggest git repack would be beneficial.
-	RepackAdvised bool
-
-	// RepackReasons lists human-readable reasons why repack is advised.
-	RepackReasons []string
-}
 
 const (
 	// repackPacksThreshold triggers repack advice when too many pack files exist.
@@ -59,8 +44,8 @@ const (
 //
 // It uses git rev-list --disk-usage --all (requires git >= 2.31) and
 // a filesystem walk of the .git directory. Both are fast even on large repos.
-func (r *Runner) Size(ctx context.Context) RepoSize {
-	var s RepoSize
+func (r *Runner) Size(ctx context.Context) models.RepoSize {
+	var s models.RepoSize
 
 	s.GitDirBytes = gitDirSize(r.gitDir(ctx))
 	s.ReachableBytes = r.reachableDiskUsage(ctx)
@@ -122,7 +107,7 @@ func (r *Runner) reachableDiskUsage(ctx context.Context) int64 {
 // evaluateRepackAdvice determines whether git repack would be beneficial.
 // It reuses the health report data (already collected) when available via context,
 // but also checks size-specific conditions.
-func (r *Runner) evaluateRepackAdvice(ctx context.Context, s *RepoSize) {
+func (r *Runner) evaluateRepackAdvice(ctx context.Context, s *models.RepoSize) {
 	// Get count-objects data for pack/loose analysis.
 	out, err := r.run(ctx, cmdCountObjects()...)
 	if err != nil {
@@ -172,7 +157,7 @@ func (r *Runner) evaluateRepackAdvice(ctx context.Context, s *RepoSize) {
 	if s.GitDirBytes > repackGitDirBytes {
 		s.RepackAdvised = true
 		s.RepackReasons = append(s.RepackReasons,
-			".git directory is "+formatBytes(s.GitDirBytes))
+			".git directory is "+models.FormatBytes(s.GitDirBytes))
 	}
 
 	// .git directory is much larger than reachable objects (bloat).
@@ -185,22 +170,8 @@ func (r *Runner) evaluateRepackAdvice(ctx context.Context, s *RepoSize) {
 		s.RepackAdvised = true
 		s.RepackReasons = append(s.RepackReasons,
 			fmt.Sprintf(".git (%s) is %.1fx larger than reachable objects (%s)",
-				formatBytes(s.GitDirBytes),
+				models.FormatBytes(s.GitDirBytes),
 				float64(s.GitDirBytes)/float64(s.ReachableBytes),
-				formatBytes(s.ReachableBytes)))
-	}
-}
-
-// formatBytes returns a human-readable byte size.
-func formatBytes(b int64) string {
-	switch {
-	case b >= 1<<30:
-		return fmt.Sprintf("%.1f GB", float64(b)/float64(1<<30))
-	case b >= 1<<20:
-		return fmt.Sprintf("%.1f MB", float64(b)/float64(1<<20))
-	case b >= 1<<10:
-		return fmt.Sprintf("%.1f KB", float64(b)/float64(1<<10))
-	default:
-		return fmt.Sprintf("%d B", b)
+				models.FormatBytes(s.ReachableBytes)))
 	}
 }

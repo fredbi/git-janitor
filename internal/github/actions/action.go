@@ -26,6 +26,6 @@ func (githubAction) ApplyTo() models.SubjectKind { return models.SubjectNone }
 // Concrete actions override this method.
 // The subjects parameter contains the specific instances to act on
 // (e.g., branch names), as provided by models.ActionSuggestion.Subjects.
-func (githubAction) Execute(_ context.Context, _ []string) (models.Result, error) {
+func (githubAction) Execute(_ context.Context, _ *models.RepoInfo, _ []string) (models.Result, error) {
 	return models.Result{}, errors.New("not implemented")
 }

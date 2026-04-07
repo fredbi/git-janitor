@@ -21,19 +21,20 @@ type Command struct {
 
 // Input wraps a bubbles/textinput for the Command zone.
 type Input struct {
+	Theme  *uxtypes.Theme
 	Input  textinput.Model
 	Width  int
 	Height int
 }
 
 // New creates a new Input with sensible defaults.
-func New() Input {
+func New(theme *uxtypes.Theme) Input {
 	ti := textinput.New()
 	ti.Placeholder = "Type a command (e.g. /help)"
 	ti.Prompt = " > "
 	ti.CharLimit = 256
 
-	return Input{Input: ti}
+	return Input{Theme: theme, Input: ti}
 }
 
 // SetSize updates the dimensions of the input widget.
@@ -67,7 +68,7 @@ func (c *Input) View(focused bool) string {
 		Border(lipgloss.RoundedBorder()).
 		Width(c.Width - 2)
 
-	t := uxtypes.CurrentTheme
+	t := c.Theme
 	if focused {
 		border = border.BorderForeground(t.Tertiary)
 	} else {

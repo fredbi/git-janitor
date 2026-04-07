@@ -11,46 +11,38 @@ import (
 // Engineer describes how engines operate.
 //
 // The [Engineer] is the high-level interface to interact with multiple registered providers.
+//
+// The engine owns the runner factories, configuration, and registries —
+// callers never need to set up runner context or check provider availability.
 type Engineer interface {
-	WithRunner(parent context.Context, name, repo string) context.Context
-	WithRepoInfo(parent context.Context, repo string, info RepoInfo) context.Context
+	// Evaluate all configured checks for the given repo info.
+	//
+	// By default, all enabled checks for the input repo are evaluated.
+	Evaluate(ctx context.Context, info *models.RepoInfo, opts ...models.EvaluateOption) (iter.Seq[models.Alert], error)
 
-	// Evaluate all configured checks for the runner and repo info in the current context
-	Evaluate(ctx context.Context) (iter.Seq[models.Alert], error)
-
-	// Execute an action for the runner and repo in the current context
-	Execute(ctx context.Context, action models.ActionSuggestion) (models.Result, error)
-
-	// Tells if a runner is enabled for this repo
-	RunnerEnabledFor(name, repo string) bool
+	// Execute an action. The engine creates the appropriate runner
+	// based on the action's Kind and the repo info.
+	Execute(ctx context.Context, info *models.RepoInfo, action models.ActionSuggestion) (models.Result, error)
 
 	GetCheck(name string) (Check, bool)
 	GetAction(name string) (Action, bool)
 
-	// Collectors
-	Collect(ctx context.Context, opts ...models.CollectOption) RepoInfo
-	Refresh(ctx context.Context) RepoInfo
+	// Collect gathers or enriches repo info.
+	// The info parameter must be non-nil and must have Path set.
+	// When the info only has Path populated, a fresh collection is performed.
+	// When the info already has data, the engine can enrich it (e.g. add platform data)
+	// and skip work that's already done.
+	//
+	// Use [models.CollectPlatform] to request hosting-platform metadata.
+	// The engine resolves the origin URL and checks config/token availability internally.
+	Collect(ctx context.Context, info *models.RepoInfo, opts ...models.CollectOption) *models.RepoInfo
 
-	// Reload config and sets checks configured for individual roots & repos
+	// Refresh fetches from remotes then re-collects repo info.
+	// The info parameter must be non-nil and must have Path set.
+	Refresh(ctx context.Context, info *models.RepoInfo) *models.RepoInfo
+
+	// Reload config and sets checks configured for individual roots & repos.
 	Reload(cfg *config.Config)
-}
-
-type RepoInfo interface {
-	IsRepoInfo()
-}
-
-// RunnerFactory produces new runner for a given repo (with path or URL).
-//
-// Each provider exposes such a factory with a unique name.
-type RunnerFactory interface {
-	NewRunner(dir string) Runner
-	Name() string
-}
-
-// Runner knows how to get things done.
-type Runner interface {
-	// Run(ctx context.Context, args ...string) (models.Result, error)
-	Run(ctx context.Context, args ...string) (string, error) // TODO
 }
 
 // SelfDescribed is common to checks and actions: provides a name and
@@ -64,7 +56,7 @@ type SelfDescribed interface {
 type Check interface {
 	SelfDescribed
 	Kind() models.CheckKind
-	Evaluate(ctx context.Context) (iter.Seq[models.Alert], error)
+	Evaluate(ctx context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error)
 }
 
 // Action is the interface for all actions, regardless of provider.
@@ -73,5 +65,22 @@ type Action interface {
 	Kind() models.ActionKind
 	ApplyTo() models.SubjectKind // what kind of subject this action operates on
 	Destructive() bool           // needs user confirmation
-	Execute(ctx context.Context, params []string) (models.Result, error)
+	Execute(ctx context.Context, info *models.RepoInfo, params []string) (models.Result, error)
+}
+
+// runnerContextKey is a shared context key type for runner injection.
+// The engine sets it; actions read it.
+type runnerContextKey struct{}
+
+// WithRunner stores a runner in the context.
+// The runner is stored as any — actions type-assert to their concrete runner type.
+func WithRunner(ctx context.Context, runner any) context.Context {
+	return context.WithValue(ctx, runnerContextKey{}, runner)
+}
+
+// RunnerFromContext extracts a runner from the context.
+func RunnerFromContext(ctx context.Context) (any, bool) {
+	r := ctx.Value(runnerContextKey{})
+
+	return r, r != nil
 }

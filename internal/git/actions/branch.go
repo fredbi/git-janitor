@@ -27,12 +27,7 @@ func NewDeleteBranch() DeleteBranch {
 func (DeleteBranch) ApplyTo() models.SubjectKind { return models.SubjectBranch }
 func (DeleteBranch) Destructive() bool           { return true }
 
-func (a DeleteBranch) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a DeleteBranch) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -41,7 +36,7 @@ func (a DeleteBranch) Execute(ctx context.Context, subjects []string) (models.Re
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a DeleteBranch) execute(ctx context.Context, r *backend.Runner, _ *backend.RepoInfo, subjects []string) (models.Result, error) {
+func (a DeleteBranch) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, subjects []string) (models.Result, error) {
 	for _, name := range subjects {
 		result := r.DeleteBranch(ctx, name)
 		if !result.OK {
@@ -70,12 +65,7 @@ func NewUpdateBranch() UpdateBranch {
 
 func (UpdateBranch) ApplyTo() models.SubjectKind { return models.SubjectBranch }
 
-func (a UpdateBranch) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a UpdateBranch) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -84,7 +74,7 @@ func (a UpdateBranch) Execute(ctx context.Context, subjects []string) (models.Re
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a UpdateBranch) execute(ctx context.Context, r *backend.Runner, info *backend.RepoInfo, subjects []string) (models.Result, error) {
+func (a UpdateBranch) execute(ctx context.Context, r *backend.Runner, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	if info == nil {
 		return models.Result{}, errors.New("repo info is required to update branches")
 	}
@@ -124,12 +114,7 @@ func NewRebaseBranch() RebaseBranch {
 
 func (RebaseBranch) ApplyTo() models.SubjectKind { return models.SubjectBranch }
 
-func (a RebaseBranch) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a RebaseBranch) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -138,7 +123,7 @@ func (a RebaseBranch) Execute(ctx context.Context, subjects []string) (models.Re
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a RebaseBranch) execute(ctx context.Context, r *backend.Runner, info *backend.RepoInfo, subjects []string) (models.Result, error) {
+func (a RebaseBranch) execute(ctx context.Context, r *backend.Runner, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	if info == nil {
 		return models.Result{}, errors.New("repo info is required to rebase branches")
 	}
@@ -179,12 +164,7 @@ func NewPushBranch() PushBranch {
 
 func (PushBranch) ApplyTo() models.SubjectKind { return models.SubjectBranch }
 
-func (a PushBranch) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a PushBranch) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -193,10 +173,10 @@ func (a PushBranch) Execute(ctx context.Context, subjects []string) (models.Resu
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a PushBranch) execute(ctx context.Context, r *backend.Runner, info *backend.RepoInfo, subjects []string) (models.Result, error) {
-	remote := backend.RemoteOrigin
+func (a PushBranch) execute(ctx context.Context, r *backend.Runner, info *models.RepoInfo, subjects []string) (models.Result, error) {
+	remote := models.RemoteOrigin
 	if info != nil {
-		remote = backend.DefaultPushRemote(info.Remotes)
+		remote = models.DefaultPushRemote(info.Remotes)
 	}
 
 	for _, name := range subjects {
@@ -210,8 +190,8 @@ func (a PushBranch) execute(ctx context.Context, r *backend.Runner, info *backen
 }
 
 // indexBranches builds a name-to-Branch lookup map from a slice.
-func indexBranches(branches []backend.Branch) map[string]backend.Branch {
-	m := make(map[string]backend.Branch, len(branches))
+func indexBranches(branches []models.Branch) map[string]models.Branch {
+	m := make(map[string]models.Branch, len(branches))
 	for _, b := range branches {
 		m[b.Name] = b
 	}

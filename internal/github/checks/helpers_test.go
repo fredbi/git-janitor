@@ -6,17 +6,16 @@ import (
 	"iter"
 	"testing"
 
-	"github.com/fredbi/git-janitor/internal/github/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
 // githubEvaluator is the interface satisfied by all GitHub checks.
 type githubEvaluator interface {
-	evaluate(data *backend.RepoInfo) (iter.Seq[models.Alert], error)
+	evaluate(data *models.PlatformInfo) (iter.Seq[models.Alert], error)
 }
 
 // collectAlerts runs a check and collects all alerts into a slice.
-func collectAlerts(t *testing.T, check githubEvaluator, data *backend.RepoInfo) []models.Alert {
+func collectAlerts(t *testing.T, check githubEvaluator, data *models.PlatformInfo) []models.Alert {
 	t.Helper()
 
 	seq, err := check.evaluate(data)

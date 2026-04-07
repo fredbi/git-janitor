@@ -6,65 +6,12 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
-// Branch represents a git branch.
-type Branch struct {
-	// Name is the short branch name (e.g. "main", "feature/foo").
-	Name string
-
-	// IsRemote is true for remote-tracking branches (e.g. "origin/main").
-	IsRemote bool
-
-	// IsCurrent is true if this is the currently checked-out branch.
-	IsCurrent bool
-
-	// Upstream is the upstream tracking ref (e.g. "origin/main"), if configured.
-	Upstream string
-
-	// Ahead is the number of commits ahead of the upstream branch.
-	Ahead int
-
-	// Behind is the number of commits behind the upstream branch.
-	Behind int
-
-	// Gone is true when the upstream branch has been deleted from the remote.
-	Gone bool
-
-	// Merged is true when the branch tip is reachable from the default branch.
-	Merged bool
-
-	// MergeCheck reports whether the branch can be cleanly merged into the default branch.
-	// nil means not yet checked.
-	MergeCheck *MergeCheck
-
-	// RebaseCheck reports whether the branch can be rebased onto the default branch.
-	// nil means not yet checked.
-	RebaseCheck *RebaseCheck
-
-	// LastCommit is the author date of the most recent commit on this branch.
-	LastCommit time.Time
-
-	// Hash is the commit hash at the tip of the branch.
-	Hash string
-}
-
-// MergeCheck holds the result of a dry-run merge check (git merge-tree).
-type MergeCheck struct {
-	// Clean is true if the merge would succeed without conflicts.
-	Clean bool
-
-	// Conflicts lists the file paths with merge conflicts (empty if Clean).
-	Conflicts []string
-}
-
-// HasUpstream reports whether this branch tracks a remote branch.
-func (b Branch) HasUpstream() bool {
-	return b.Upstream != ""
-}
-
 // Branches runs git branch -a --format and returns all local and remote branches.
-func (r *Runner) Branches(ctx context.Context) ([]Branch, error) {
+func (r *Runner) Branches(ctx context.Context) ([]models.Branch, error) {
 	// Use a machine-readable format to avoid parsing alignment quirks.
 	// Fields: HEAD, refname:short, objectname:short, upstream:short, upstream:track, creatordate
 	out, err := r.run(ctx, cmdBranchList()...)
@@ -75,44 +22,9 @@ func (r *Runner) Branches(ctx context.Context) ([]Branch, error) {
 	return parseBranches(out), nil
 }
 
-// DefaultBranch detects the default branch of the repository.
-//
-// It tries (in order):
-//  1. git symbolic-ref refs/remotes/origin/HEAD — the remote's default.
-//  2. Presence of common branch names (main, master) locally.
-//  3. Falls back to the current branch.
-func (r *Runner) DefaultBranch(ctx context.Context) (string, error) {
-	// Try remote HEAD symbolic ref first.
-	out, err := r.run(ctx, cmdSymbolicRef("refs/remotes/origin/HEAD")...)
-	if err == nil {
-		ref := strings.TrimSpace(out)
-		// ref is "origin/main" — strip the remote prefix.
-		if _, branch, ok := strings.Cut(ref, "/"); ok {
-			return branch, nil
-		}
-
-		return ref, nil
-	}
-
-	// Fallback: check if main or master exist locally.
-	for _, candidate := range []string{"main", "master"} {
-		if _, verifyErr := r.run(ctx, cmdRevParseVerify(candidate)...); verifyErr == nil {
-			return candidate, nil
-		}
-	}
-
-	// Last resort: current branch.
-	out, err = r.run(ctx, cmdRevParseAbbrev("HEAD")...)
-	if err != nil {
-		return "", err
-	}
-
-	return strings.TrimSpace(out), nil
-}
-
 // parseBranches parses the output of git branch -a --format.
-func parseBranches(output string) []Branch {
-	var branches []Branch
+func parseBranches(output string) []models.Branch {
+	var branches []models.Branch
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -165,7 +77,7 @@ func parseBranches(output string) []Branch {
 
 		isRemote := strings.HasPrefix(fullRef, "refs/remotes/")
 
-		b := Branch{
+		b := models.Branch{
 			Name:       name,
 			Hash:       hash,
 			IsCurrent:  head == "*",
@@ -181,6 +93,41 @@ func parseBranches(output string) []Branch {
 	}
 
 	return branches
+}
+
+// DefaultBranch detects the default branch of the repository.
+//
+// It tries (in order):
+//  1. git symbolic-ref refs/remotes/origin/HEAD — the remote's default.
+//  2. Presence of common branch names (main, master) locally.
+//  3. Falls back to the current branch.
+func (r *Runner) DefaultBranch(ctx context.Context) (string, error) {
+	// Try remote HEAD symbolic ref first.
+	out, err := r.run(ctx, cmdSymbolicRef("refs/remotes/origin/HEAD")...)
+	if err == nil {
+		ref := strings.TrimSpace(out)
+		// ref is "origin/main" — strip the remote prefix.
+		if _, branch, ok := strings.Cut(ref, "/"); ok {
+			return branch, nil
+		}
+
+		return ref, nil
+	}
+
+	// Fallback: check if main or master exist locally.
+	for _, candidate := range []string{"main", "master"} {
+		if _, verifyErr := r.run(ctx, cmdRevParseVerify(candidate)...); verifyErr == nil {
+			return candidate, nil
+		}
+	}
+
+	// Last resort: current branch.
+	out, err = r.run(ctx, cmdRevParseAbbrev("HEAD")...)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(out), nil
 }
 
 // parseUpstreamTrack parses the %(upstream:track) output.
@@ -268,7 +215,7 @@ func (r *Runner) IsFullyApplied(ctx context.Context, target, branch string) (boo
 //   - fully applied to target by patch-id (git cherry), catching squash-merges and rebases.
 //
 // The runner is optional: if nil, only the reachability check is used.
-func MarkMerged(ctx context.Context, r *Runner, branches []Branch, target string, merged map[string]bool) {
+func MarkMerged(ctx context.Context, r *Runner, branches []models.Branch, target string, merged map[string]bool) {
 	for i := range branches {
 		b := &branches[i]
 
@@ -294,19 +241,19 @@ func MarkMerged(ctx context.Context, r *Runner, branches []Branch, target string
 // CanMerge performs a dry-run merge of branch into target using git merge-tree.
 // It requires git >= 2.38. The merge is performed entirely in memory —
 // the worktree and index are not touched.
-func (r *Runner) CanMerge(ctx context.Context, target, branch string) MergeCheck {
+func (r *Runner) CanMerge(ctx context.Context, target, branch string) models.MergeCheck {
 	out, err := r.run(ctx, cmdMergeTree(target, branch)...)
 	if err != nil {
 		// Exit code 1 means conflicts. Parse the output for file names.
 		return parseMergeTreeConflicts(out)
 	}
 
-	return MergeCheck{Clean: true}
+	return models.MergeCheck{Clean: true}
 }
 
 // parseMergeTreeConflicts extracts conflicting file names from merge-tree output.
 // The output format on conflict is: tree-hash\n\nfile1\nfile2\n...
-func parseMergeTreeConflicts(output string) MergeCheck {
+func parseMergeTreeConflicts(output string) models.MergeCheck {
 	var conflicts []string
 
 	// Skip the first line (tree hash) and any blank lines.
@@ -325,7 +272,7 @@ func parseMergeTreeConflicts(output string) MergeCheck {
 		conflicts = append(conflicts, line)
 	}
 
-	return MergeCheck{Clean: false, Conflicts: conflicts}
+	return models.MergeCheck{Clean: false, Conflicts: conflicts}
 }
 
 // isHexHash reports whether s looks like a git object hash (40 or 64 hex chars).
@@ -345,7 +292,7 @@ func isHexHash(s string) bool {
 
 // CheckMergeable runs CanMerge for each local branch that is not already merged
 // and not the target itself, populating the MergeCheck field.
-func (r *Runner) CheckMergeable(ctx context.Context, branches []Branch, target string) {
+func (r *Runner) CheckMergeable(ctx context.Context, branches []models.Branch, target string) {
 	for i := range branches {
 		b := &branches[i]
 
@@ -360,7 +307,7 @@ func (r *Runner) CheckMergeable(ctx context.Context, branches []Branch, target s
 
 // CheckRebaseable runs CheckRebase for each local branch that is not already merged
 // and not the target itself, populating the RebaseCheck field.
-func (r *Runner) CheckRebaseable(ctx context.Context, branches []Branch, target string) {
+func (r *Runner) CheckRebaseable(ctx context.Context, branches []models.Branch, target string) {
 	for i := range branches {
 		b := &branches[i]
 
@@ -374,13 +321,13 @@ func (r *Runner) CheckRebaseable(ctx context.Context, branches []Branch, target 
 }
 
 // LocalBranches returns only local branches.
-func (r *Runner) LocalBranches(ctx context.Context) ([]Branch, error) {
+func (r *Runner) LocalBranches(ctx context.Context) ([]models.Branch, error) {
 	all, err := r.Branches(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var local []Branch
+	var local []models.Branch
 	for _, b := range all {
 		if !b.IsRemote {
 			local = append(local, b)
@@ -391,13 +338,13 @@ func (r *Runner) LocalBranches(ctx context.Context) ([]Branch, error) {
 }
 
 // RemoteBranches returns only remote-tracking branches.
-func (r *Runner) RemoteBranches(ctx context.Context) ([]Branch, error) {
+func (r *Runner) RemoteBranches(ctx context.Context) ([]models.Branch, error) {
 	all, err := r.Branches(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var remote []Branch
+	var remote []models.Branch
 	for _, b := range all {
 		if b.IsRemote {
 			remote = append(remote, b)

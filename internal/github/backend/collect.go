@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/fredbi/git-janitor/internal/models"
 	gogithub "github.com/google/go-github/v72/github"
 )
 
@@ -17,8 +18,8 @@ var ErrRateLimited = errors.New("github: rate limited, try again later")
 //
 // Cheap path: 1 call (repos.Get) + 1 call (pulls.List per_page=1 for accurate PR count).
 // When fetchSecurity is true, also queries security APIs (up to 3 extra calls).
-func collectRepoInfo(ctx context.Context, c *Client, owner, repo string, fetchSecurity bool) *RepoInfo {
-	data := NewRepoInfo(owner, repo)
+func collectRepoInfo(ctx context.Context, c *Client, owner, repo string, fetchSecurity bool) *models.PlatformInfo {
+	data := models.NewPlatformInfo(owner, repo)
 
 	ghRepo, resp, err := c.gh.Repositories.Get(ctx, owner, repo)
 	c.updateRate(resp)
@@ -51,7 +52,7 @@ func collectRepoInfo(ctx context.Context, c *Client, owner, repo string, fetchSe
 	return data
 }
 
-func populateFromRepo(data *RepoInfo, r *gogithub.Repository) {
+func populateFromRepo(data *models.PlatformInfo, r *gogithub.Repository) {
 	data.FullName = r.GetFullName()
 	data.HTMLURL = r.GetHTMLURL()
 	data.Description = r.GetDescription()
@@ -109,7 +110,7 @@ func countOpenPRs(ctx context.Context, c *Client, owner, repo string) (int, erro
 // the corresponding API is not accessible.
 //
 // Total: up to 3 API calls.
-func CollectSecurityAlerts(ctx context.Context, c *Client, data *RepoInfo) {
+func CollectSecurityAlerts(ctx context.Context, c *Client, data *models.PlatformInfo) {
 	owner, repo := data.Owner, data.Repo
 
 	// Dependabot alerts.

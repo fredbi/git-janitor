@@ -2,7 +2,7 @@ package ux
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/fredbi/git-janitor/internal/engine"
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 // forceRepoCheck unconditionally fetches info for the selected repo.
@@ -24,7 +24,7 @@ func (m *Model) forceRepoCheck() tea.Cmd {
 
 	// For non-git repos, update panels immediately (no async fetch needed).
 	if !repo.IsGit {
-		info := engine.NoGit(repo.Path)
+		info := models.NoGit(repo.Path)
 		m.LastRepoInfo = info
 		m.Right.SetRepoInfo(info)
 

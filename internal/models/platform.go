@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package backend
+package models
 
 import "time"
 
-// RepoInfo holds GitHub API data for a single repository.
+// PlatformInfo holds hosting-platform metadata for a repository.
 //
-// The cheap path (single repos.Get call) populates most fields.
-// Expensive fields (UnrespondedIssues, PendingReviewPRs, VulnerabilityAlerts)
-// are populated only when the corresponding checks are enabled.
-type RepoInfo struct {
+// This covers GitHub, GitLab, Gitea, etc. Provider-specific fields
+// that don't generalize across platforms are nil/zero when not applicable.
+type PlatformInfo struct {
 	// Identity.
 	Owner    string
 	Repo     string
@@ -25,13 +24,13 @@ type RepoInfo struct {
 	IsArchived    bool
 	IsPrivate     bool
 
-	// Permissions (from repos.Get).
-	HasAdminAccess bool // true if the token has admin access
-	HasPushAccess  bool // true if the token has push access
+	// Permissions (from API).
+	HasAdminAccess bool
+	HasPushAccess  bool
 
-	// Counts (from repos.Get).
-	OpenIssues int // includes PRs (GitHub API behavior)
-	OpenPRs    int // accurate count from pulls.List
+	// Counts.
+	OpenIssues int // includes PRs on GitHub
+	OpenPRs    int // accurate count
 	StarCount  int
 	ForkCount  int
 
@@ -48,25 +47,25 @@ type RepoInfo struct {
 	PendingReviewPRs  int // -1 = not fetched
 
 	// Security alerts (-1 = not fetched / no access, -2 = not queried by config).
-	DependabotAlerts     int  // open Dependabot alerts
-	CodeScanningAlerts   int  // open code scanning alerts
-	SecretScanningAlerts int  // open secret scanning alerts
+	DependabotAlerts     int
+	CodeScanningAlerts   int
+	SecretScanningAlerts int
 	SecuritySkipped      bool // true when config says securityAlerts: false
 
 	// Token scopes (from X-OAuth-Scopes header). Empty for fine-grained tokens.
 	TokenScopes string
 
-	// Cross-check field: injected by the UX layer from git.RepoInfo.
+	// Cross-check field: injected from git data.
 	LocalDefaultBranch string
 
 	// Err is non-nil if the API call failed.
 	Err error
 }
 
-// NewRepoInfo returns a RepoInfo with expensive fields initialized to -1
+// NewPlatformInfo returns a PlatformInfo with expensive fields initialized to -1
 // (not fetched).
-func NewRepoInfo(owner, repo string) *RepoInfo {
-	return &RepoInfo{
+func NewPlatformInfo(owner, repo string) *PlatformInfo {
+	return &PlatformInfo{
 		Owner:                owner,
 		Repo:                 repo,
 		FullName:             owner + "/" + repo,
@@ -80,7 +79,7 @@ func NewRepoInfo(owner, repo string) *RepoInfo {
 
 // SecurityAlerts returns the total count of open security alerts,
 // or -1 if none of the security APIs were queried.
-func (d *RepoInfo) SecurityAlerts() int {
+func (d *PlatformInfo) SecurityAlerts() int {
 	total := 0
 	queried := false
 

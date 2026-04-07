@@ -4,17 +4,12 @@ import (
 	"bufio"
 	"context"
 	"strings"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
-// Remote represents a git remote with its name and URL.
-type Remote struct {
-	Name     string
-	FetchURL string
-	PushURL  string
-}
-
 // Remotes runs git remote -v and returns the parsed remotes.
-func (r *Runner) Remotes(ctx context.Context) ([]Remote, error) {
+func (r *Runner) Remotes(ctx context.Context) ([]models.Remote, error) {
 	out, err := r.run(ctx, cmdRemoteVerbose()...)
 	if err != nil {
 		return nil, err
@@ -47,7 +42,7 @@ func (r *Runner) RemoteMap(ctx context.Context) (map[string]string, error) {
 //
 //	origin	https://github.com/user/repo.git (fetch)
 //	origin	https://github.com/user/repo.git (push)
-func parseRemotes(output string) []Remote {
+func parseRemotes(output string) []models.Remote {
 	// Collect into a map so we can merge fetch+push lines.
 	type urls struct {
 		fetch string
@@ -89,10 +84,10 @@ func parseRemotes(output string) []Remote {
 		}
 	}
 
-	remotes := make([]Remote, 0, len(order))
+	remotes := make([]models.Remote, 0, len(order))
 	for _, name := range order {
 		u := seen[name]
-		remotes = append(remotes, Remote{
+		remotes = append(remotes, models.Remote{
 			Name:     name,
 			FetchURL: u.fetch,
 			PushURL:  u.push,

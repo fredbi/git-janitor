@@ -9,14 +9,6 @@ import (
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
-// Well-known remote names.
-// For phases 1-3, we only consider these two remotes.
-// Phase 4+ may make these configurable.
-const (
-	RemoteOrigin   = "origin"
-	RemoteUpstream = "upstream"
-)
-
 var (
 	githubHostRe = regexp.MustCompile(`github\.(\w+)`)
 	gitlabHostRe = regexp.MustCompile(`gitlab\.(\w+)`)
@@ -28,8 +20,8 @@ var (
 // merge/rebase checks, activity) that can take 10+ seconds on large repos.
 //
 // Use [Runner.CollectRepoInfo] for a full deep inspection (Ctrl+R refresh).
-func (r *Runner) CollectRepoInfoFast(ctx context.Context) *RepoInfo {
-	info := &RepoInfo{Path: r.Dir, IsGit: true}
+func (r *Runner) CollectRepoInfoFast(ctx context.Context) *models.RepoInfo {
+	info := &models.RepoInfo{Path: r.Dir, IsGit: true}
 	var err error
 
 	info.Status, err = r.Status(ctx)
@@ -75,12 +67,12 @@ func (r *Runner) CollectRepoInfoFast(ctx context.Context) *RepoInfo {
 
 // CollectRepoInfo gathers status, branches, remotes, stashes and default branch,
 // then derives SCM, kind, and last commit time.
-func (r *Runner) CollectRepoInfo(ctx context.Context) *RepoInfo {
+func (r *Runner) CollectRepoInfo(ctx context.Context) *models.RepoInfo {
 	return r.collectRepoInfo(ctx)
 }
 
-func (r *Runner) collectRepoInfo(ctx context.Context) *RepoInfo {
-	info := &RepoInfo{Path: r.Dir, IsGit: true}
+func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
+	info := &models.RepoInfo{Path: r.Dir, IsGit: true}
 
 	var err error
 
@@ -129,11 +121,11 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *RepoInfo {
 
 	// Tags and derived summary.
 	info.Tags, _ = r.Tags(ctx, info.DefaultBranch) // non-fatal
-	info.LastTagDate, info.LastSemverTag, info.LastSemverDate = DeriveTagSummary(info.Tags)
+	info.LastTagDate, info.LastSemverTag, info.LastSemverDate = models.DeriveTagSummary(info.Tags)
 
 	// Commit activity and staleness.
 	activity := r.Activity(ctx)
-	activity.TagsLast360d = CountTagsInWindow(info.Tags, 360)
+	activity.TagsLast360d = models.CountTagsInWindow(info.Tags, 360)
 	info.Activity = &activity
 
 	// Health check: integrity + GC diagnostics.
@@ -164,8 +156,8 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *RepoInfo {
 }
 
 // DeriveSCM determines the SCM provider from the origin remote URL.
-func DeriveSCM(remotes []Remote) models.RepoSCM {
-	originURL := OriginFetchURL(remotes)
+func DeriveSCM(remotes []models.Remote) models.RepoSCM {
+	originURL := models.OriginFetchURL(remotes)
 	if originURL == "" {
 		return models.SCMOther
 	}
@@ -188,7 +180,7 @@ func DeriveSCM(remotes []Remote) models.RepoSCM {
 // This catches cases where the upstream remote is misspelled (e.g. "upstram").
 //
 // A repo is a "clone" if it has zero or one unique remote URL.
-func DeriveKind(remotes []Remote) models.RepoKind {
+func DeriveKind(remotes []models.Remote) models.RepoKind {
 	if len(remotes) <= 1 {
 		return models.RepoKindClone
 	}
@@ -207,63 +199,6 @@ func DeriveKind(remotes []Remote) models.RepoKind {
 	}
 
 	return models.RepoKindClone
-}
-
-// OriginFetchURL returns the fetch URL for the "origin" remote, or empty string.
-func OriginFetchURL(remotes []Remote) string {
-	for _, rm := range remotes {
-		if rm.Name == RemoteOrigin {
-			return rm.FetchURL
-		}
-	}
-
-	return ""
-}
-
-// UpstreamFetchURL returns the fetch URL for the "upstream" remote, or empty string.
-func UpstreamFetchURL(remotes []Remote) string {
-	for _, rm := range remotes {
-		if rm.Name == RemoteUpstream {
-			return rm.FetchURL
-		}
-	}
-
-	return ""
-}
-
-// FindRemote returns the Remote with the given name, or nil if not found.
-func FindRemote(remotes []Remote, name string) *Remote {
-	for i := range remotes {
-		if remotes[i].Name == name {
-			return &remotes[i]
-		}
-	}
-
-	return nil
-}
-
-// HasDistinctRemote reports whether the repo has a remote with a URL
-// different from origin's URL (i.e. a potential upstream/fork source).
-// Returns the name of the first such remote, or empty string.
-func HasDistinctRemote(remotes []Remote) (string, bool) {
-	originURL := OriginFetchURL(remotes)
-	if originURL == "" {
-		return "", false
-	}
-
-	normOrigin := NormalizeURL(originURL)
-
-	for _, rm := range remotes {
-		if rm.Name == RemoteOrigin {
-			continue
-		}
-
-		if rm.FetchURL != "" && NormalizeURL(rm.FetchURL) != normOrigin {
-			return rm.Name, true
-		}
-	}
-
-	return "", false
 }
 
 // ExtractHost extracts the hostname from a git remote URL.

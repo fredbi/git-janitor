@@ -9,29 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/models"
 	gogithub "github.com/google/go-github/v72/github"
 )
-
-var (
-	_ ifaces.Runner        = &Runner{} // TODO
-	_ ifaces.RunnerFactory = RunnerFactory{}
-)
-
-type RunnerFactory struct {
-	models.Describer
-}
-
-func NewRunnerFactory() *RunnerFactory {
-	return &RunnerFactory{
-		Describer: models.NewDescriber("github-runner", "a runner for github API"),
-	}
-}
-
-func (f RunnerFactory) NewRunner(dir string) ifaces.Runner {
-	return NewRunner(dir)
-}
 
 // RateInfo tracks GitHub API rate-limit state.
 type RateInfo struct {
@@ -46,17 +26,16 @@ type FetchOptions struct {
 	FetchSecurity bool
 }
 
+// Runner wraps a Client for use as a context-injected runner by the engine.
 type Runner struct {
 	*Client
 }
 
-func NewRunner(_ string) *Runner {
+// NewRunner creates a Runner backed by a new Client.
+func NewRunner() *Runner {
 	return &Runner{
 		Client: NewClient(),
 	}
-}
-func (r *Runner) Run(ctx context.Context, args ...string) (string, error) {
-	return "", nil // TODO
 }
 
 // Client wraps the go-github client with token resolution and rate-limit awareness.
@@ -74,7 +53,7 @@ type Client struct {
 //
 // It checks GITHUB_TOKEN first, then GH_TOKEN as fallback.
 // If neither is set, Available() returns false and all fetch
-// operations return immediately with a nil RepoInfo.
+// operations return immediately with a nil PlatformInfo.
 func NewClient() *Client {
 	token := os.Getenv("GITHUB_TOKEN")
 	if token == "" {
@@ -131,7 +110,7 @@ func (c *Client) SetDescription(ctx context.Context, owner, repo, description st
 }
 
 // Fetch retrieves GitHub repo data, using the cache unless ForceRefresh is true.
-func (c *Client) Fetch(ctx context.Context, owner, repo string, opts FetchOptions) *RepoInfo {
+func (c *Client) Fetch(ctx context.Context, owner, repo string, opts FetchOptions) *models.PlatformInfo {
 	if !c.available {
 		return nil
 	}
@@ -145,7 +124,7 @@ func (c *Client) Fetch(ctx context.Context, owner, repo string, opts FetchOption
 	}
 
 	if c.rateLimited() {
-		data := NewRepoInfo(owner, repo)
+		data := models.NewPlatformInfo(owner, repo)
 		data.Err = ErrRateLimited
 
 		return data

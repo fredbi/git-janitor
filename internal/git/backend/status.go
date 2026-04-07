@@ -5,67 +5,23 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
-// StatusEntry represents a single entry from git status --porcelain=v2.
-type StatusEntry struct {
-	// XY is the two-character status code (e.g. "M.", ".M", "A.", "??").
-	XY string
-
-	// Path is the file path relative to the repo root.
-	Path string
-
-	// OrigPath is set for renames/copies (the source path).
-	OrigPath string
-}
-
-// IsUntracked reports whether the entry is an untracked file.
-func (e StatusEntry) IsUntracked() bool {
-	return e.XY == "??"
-}
-
-// IsIgnored reports whether the entry is an ignored file.
-func (e StatusEntry) IsIgnored() bool {
-	return e.XY == "!!"
-}
-
-// Status holds the parsed output of git status.
-type Status struct {
-	// Branch is the current branch name (empty if detached HEAD).
-	Branch string
-
-	// OID is the commit hash of HEAD.
-	OID string
-
-	// Upstream is the upstream tracking branch (e.g. "origin/main").
-	Upstream string
-
-	// AheadBehind holds the ahead/behind counts relative to upstream.
-	Ahead  int
-	Behind int
-
-	// Entries are the changed/untracked files.
-	Entries []StatusEntry
-}
-
-// IsDirty reports whether the working tree has any changes.
-func (s Status) IsDirty() bool {
-	return len(s.Entries) > 0
-}
-
 // Status runs git status --porcelain=v2 --branch and parses the output.
-func (r *Runner) Status(ctx context.Context) (Status, error) {
+func (r *Runner) Status(ctx context.Context) (models.Status, error) {
 	out, err := r.run(ctx, cmdStatus()...)
 	if err != nil {
-		return Status{}, err
+		return models.Status{}, err
 	}
 
 	return parseStatus(out), nil
 }
 
 // parseStatus parses the output of git status --porcelain=v2 --branch.
-func parseStatus(output string) Status {
-	var s Status
+func parseStatus(output string) models.Status {
+	var s models.Status
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -96,14 +52,14 @@ func parseStatus(output string) Status {
 
 		case strings.HasPrefix(line, "? "):
 			// Untracked file.
-			s.Entries = append(s.Entries, StatusEntry{
+			s.Entries = append(s.Entries, models.StatusEntry{
 				XY:   "??",
 				Path: line[2:],
 			})
 
 		case strings.HasPrefix(line, "! "):
 			// Ignored file.
-			s.Entries = append(s.Entries, StatusEntry{
+			s.Entries = append(s.Entries, models.StatusEntry{
 				XY:   "!!",
 				Path: line[2:],
 			})
@@ -114,7 +70,7 @@ func parseStatus(output string) Status {
 }
 
 // parseAheadBehind parses "+N -M" into Ahead/Behind on a Status.
-func parseAheadBehind(s string, st *Status) {
+func parseAheadBehind(s string, st *models.Status) {
 	// Format: "+3 -1"
 	var ahead, behind int
 
@@ -134,7 +90,7 @@ func parseAheadBehind(s string, st *Status) {
 // Format for rename/copy (type 2):
 //
 //	2 XY sub mH mI mW hH hI Xscore path\torigPath
-func parseChangedEntry(line string) *StatusEntry {
+func parseChangedEntry(line string) *models.StatusEntry {
 	// Split into at most 9 or 10 space-delimited fields, keeping the tail intact
 	// so that tab-separated paths in rename entries are preserved.
 	fields := strings.SplitN(line, " ", 2)
@@ -152,7 +108,7 @@ func parseChangedEntry(line string) *StatusEntry {
 			return nil
 		}
 
-		return &StatusEntry{
+		return &models.StatusEntry{
 			XY:   parts[1],
 			Path: parts[8],
 		}
@@ -168,7 +124,7 @@ func parseChangedEntry(line string) *StatusEntry {
 		pathPart := parts[9]
 		path, origPath, _ := strings.Cut(pathPart, "\t")
 
-		return &StatusEntry{
+		return &models.StatusEntry{
 			XY:       parts[1],
 			Path:     path,
 			OrigPath: origPath,

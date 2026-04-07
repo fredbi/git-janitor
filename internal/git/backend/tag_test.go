@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 func TestParseTags(t *testing.T) {
@@ -88,14 +90,14 @@ func TestCompareSemver(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		a := Tag{Name: tt.a}
+		a := models.Tag{Name: tt.a}
 		parseSemver(&a)
-		b := Tag{Name: tt.b}
+		b := models.Tag{Name: tt.b}
 		parseSemver(&b)
 
-		got := CompareSemver(a, b)
+		got := models.CompareSemver(a, b)
 		if got != tt.want {
-			t.Errorf("CompareSemver(%s, %s) = %d, want %d", tt.a, tt.b, got, tt.want)
+			t.Errorf("models.CompareSemver(%s, %s) = %d, want %d", tt.a, tt.b, got, tt.want)
 		}
 	}
 }
@@ -108,7 +110,7 @@ func TestDeriveTagSummary(t *testing.T) {
 			"commit|old-tag|ddd||2020-01-01T00:00:00+00:00||unsigned\n",
 	)
 
-	lastDate, lastSemver, lastSemverDate := DeriveTagSummary(tags)
+	lastDate, lastSemver, lastSemverDate := models.DeriveTagSummary(tags)
 
 	// Most recent date is v2.1.0-rc.1 (March 2026).
 	if lastDate.Year() != 2026 || lastDate.Month() != 3 {
@@ -172,7 +174,7 @@ func TestIntegration_Tags(t *testing.T) {
 	t.Logf("semver=%d annotated=%d signed=%d localOnly=%d remoteOnly=%d",
 		semverCount, annotatedCount, signedCount, localOnlyCount, remoteOnlyCount)
 
-	lastDate, lastSemver, lastSemverDate := DeriveTagSummary(tags)
+	lastDate, lastSemver, lastSemverDate := models.DeriveTagSummary(tags)
 	t.Logf("lastTagDate=%s lastSemverTag=%s lastSemverDate=%s",
 		lastDate.Format("2006-01-02"), lastSemver, lastSemverDate.Format("2006-01-02"))
 }

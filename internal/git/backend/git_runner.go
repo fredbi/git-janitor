@@ -7,31 +7,9 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-
-	"github.com/fredbi/git-janitor/internal/ifaces"
-	"github.com/fredbi/git-janitor/internal/models"
 )
 
 const defaultTimeout = 30 * time.Second
-
-var (
-	_ ifaces.Runner        = &Runner{} // TODO
-	_ ifaces.RunnerFactory = RunnerFactory{}
-)
-
-type RunnerFactory struct {
-	models.Describer
-}
-
-func NewRunnerFactory() *RunnerFactory {
-	return &RunnerFactory{
-		Describer: models.NewDescriber("git-runner", "a runner for git commands"),
-	}
-}
-
-func (f RunnerFactory) NewRunner(dir string) ifaces.Runner {
-	return NewRunner(dir)
-}
 
 // Runner executes git CLI commands against a specific repository directory.
 type Runner struct {
@@ -46,10 +24,6 @@ type Runner struct {
 // NewRunner returns a Runner for the given repository directory.
 func NewRunner(dir string) *Runner {
 	return &Runner{Dir: dir}
-}
-
-func (r *Runner) Name() string {
-	return "git-runner"
 }
 
 // Run executes a git command and returns its stdout output.

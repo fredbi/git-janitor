@@ -3,6 +3,8 @@ package backend
 import (
 	"context"
 	"testing"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 // Test inputs include the 7th field: %(refname) for reliable local/remote detection.
@@ -216,12 +218,12 @@ func TestParseBranches_Gone(t *testing.T) {
 }
 
 func TestParseBranches_HasUpstream(t *testing.T) {
-	b := Branch{Upstream: "origin/main"}
+	b := models.Branch{Upstream: "origin/main"}
 	if !b.HasUpstream() {
 		t.Error("expected HasUpstream() = true")
 	}
 
-	b2 := Branch{}
+	b2 := models.Branch{}
 	if b2.HasUpstream() {
 		t.Error("expected HasUpstream() = false")
 	}

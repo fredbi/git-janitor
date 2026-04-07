@@ -4,49 +4,13 @@ import (
 	"bufio"
 	"context"
 	"strings"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
-
-// Worktree represents a git worktree linked to a repository.
-type Worktree struct {
-	// Path is the absolute filesystem path of the worktree.
-	Path string
-
-	// HEAD is the commit hash at the tip of the worktree.
-	HEAD string
-
-	// Branch is the checked-out branch (e.g. "refs/heads/main").
-	// Empty if the worktree is in detached HEAD state.
-	Branch string
-
-	// Detached is true if the worktree is in detached HEAD state.
-	Detached bool
-
-	// Bare is true if this is the bare repository entry.
-	Bare bool
-
-	// Prunable is true if the worktree path is missing and can be pruned.
-	Prunable bool
-}
-
-// BranchShort returns the short branch name (e.g. "main" from "refs/heads/main").
-// Returns empty string if detached or bare.
-func (w Worktree) BranchShort() string {
-	return strings.TrimPrefix(w.Branch, "refs/heads/")
-}
-
-// IsMain reports whether this is the main worktree (the original checkout,
-// not a linked worktree). The main worktree is always listed first by git.
-// We detect it by checking that it's not bare and its path matches the
-// repository's own directory.
-//
-// Note: callers typically just check the first entry from Worktrees().
-func (w Worktree) IsMain() bool {
-	return !w.Bare && w.Branch != "" && !w.Prunable
-}
 
 // Worktrees lists all worktrees for the repository.
 // The first entry is always the main worktree.
-func (r *Runner) Worktrees(ctx context.Context) ([]Worktree, error) {
+func (r *Runner) Worktrees(ctx context.Context) ([]models.Worktree, error) {
 	out, err := r.run(ctx, cmdWorktreeList()...)
 	if err != nil {
 		return nil, err
@@ -63,9 +27,9 @@ func (r *Runner) Worktrees(ctx context.Context) ([]Worktree, error) {
 //	HEAD <hash>
 //	branch refs/heads/<name>   (or "detached" or "bare")
 //	prunable gitdir file points to non-existent location
-func parseWorktrees(output string) []Worktree {
-	var worktrees []Worktree
-	var current *Worktree
+func parseWorktrees(output string) []models.Worktree {
+	var worktrees []models.Worktree
+	var current *models.Worktree
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -77,7 +41,7 @@ func parseWorktrees(output string) []Worktree {
 				worktrees = append(worktrees, *current)
 			}
 
-			current = &Worktree{
+			current = &models.Worktree{
 				Path: strings.TrimPrefix(line, "worktree "),
 			}
 

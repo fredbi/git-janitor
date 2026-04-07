@@ -1,6 +1,7 @@
 package ux
 
 import (
+	"context"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -53,8 +54,7 @@ func (m *Model) runAction(msg uxtypes.ExecuteActionMsg) tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		ctx := m.Engine.WithRepoInfo(m.useGitWithPath(repoPath), repoPath, info)
-		result, err := m.Engine.Execute(ctx, action)
+		result, err := m.Engine.Execute(context.Background(), info, action)
 		if err != nil {
 			return uxtypes.ActionResultMsg{
 				RepoPath:   repoPath,

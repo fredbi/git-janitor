@@ -3,6 +3,8 @@ package backend
 import (
 	"context"
 	"testing"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 func TestParseConfigEntries(t *testing.T) {
@@ -19,7 +21,7 @@ func TestParseConfigEntries(t *testing.T) {
 		t.Errorf("user.email = %q, want local@override.com", email.Value)
 	}
 
-	if email.Scope != ScopeLocal {
+	if email.Scope != models.ScopeLocal {
 		t.Errorf("user.email scope = %q, want local", email.Scope)
 	}
 
@@ -50,7 +52,7 @@ func TestIntegration_Config(t *testing.T) {
 
 	entries := []struct {
 		name  string
-		entry ConfigEntry
+		entry models.ConfigEntry
 	}{
 		{"user.email", cfg.UserEmail},
 		{"user.name", cfg.UserName},

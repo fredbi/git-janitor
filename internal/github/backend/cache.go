@@ -5,6 +5,8 @@ package backend
 import (
 	"sync"
 	"time"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 const (
@@ -13,11 +15,11 @@ const (
 )
 
 type cacheEntry struct {
-	data      *RepoInfo
+	data      *models.PlatformInfo
 	expiresAt time.Time
 }
 
-// Cache is a simple TTL cache for GitHub RepoInfo, keyed by "owner/repo".
+// Cache is a simple TTL cache for GitHub PlatformInfo, keyed by "owner/repo".
 type Cache struct {
 	mu      sync.RWMutex
 	entries map[string]cacheEntry
@@ -33,7 +35,7 @@ func NewCache(ttl time.Duration) *Cache {
 }
 
 // Get returns cached data if present and not expired.
-func (c *Cache) Get(key string) (*RepoInfo, bool) {
+func (c *Cache) Get(key string) (*models.PlatformInfo, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -46,7 +48,7 @@ func (c *Cache) Get(key string) (*RepoInfo, bool) {
 }
 
 // Set stores data in the cache with the current TTL.
-func (c *Cache) Set(key string, data *RepoInfo) {
+func (c *Cache) Set(key string, data *models.PlatformInfo) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

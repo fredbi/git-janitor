@@ -27,12 +27,7 @@ func NewRenameRemote() RenameRemote {
 
 func (RenameRemote) ApplyTo() models.SubjectKind { return models.SubjectRemote }
 
-func (a RenameRemote) Execute(ctx context.Context, subjects []string) (models.Result, error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return models.Result{}, err
-	}
-
+func (a RenameRemote) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	runner, err := runnerCtx(ctx)
 	if err != nil {
 		return models.Result{}, err
@@ -41,7 +36,7 @@ func (a RenameRemote) Execute(ctx context.Context, subjects []string) (models.Re
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a RenameRemote) execute(ctx context.Context, r *backend.Runner, _ *backend.RepoInfo, subjects []string) (models.Result, error) {
+func (a RenameRemote) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, subjects []string) (models.Result, error) {
 	const minSubjects = 2
 	if len(subjects) < minSubjects {
 		return models.Result{}, errors.New("rename-remote requires [oldName, newName] as subjects")
@@ -49,5 +44,5 @@ func (a RenameRemote) execute(ctx context.Context, r *backend.Runner, _ *backend
 
 	result := r.RenameRemote(ctx, subjects[0], subjects[1])
 
-	return models.Result{OK: result.OK, Message: result.Message}, nil
+	return models.Result(result), nil
 }

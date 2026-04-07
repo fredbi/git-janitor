@@ -4,31 +4,9 @@ import (
 	"bufio"
 	"context"
 	"strings"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
-
-// RebaseCheck holds the result of a dry-run rebase analysis.
-type RebaseCheck struct {
-	// CanRebase is true if replaying each commit one by one onto target succeeds.
-	CanRebase bool
-
-	// CanRebaseSquashed is true if squashing all commits first and then rebasing
-	// onto target succeeds. This avoids intermediate conflicts that may occur
-	// during a per-commit replay.
-	CanRebaseSquashed bool
-
-	// Conflicts lists file paths from whichever strategy was attempted last.
-	// If CanRebase is true, this is empty.
-	// If CanRebase is false but CanRebaseSquashed is true, this is empty.
-	// If both are false, this contains the conflicts from the squashed attempt.
-	Conflicts []string
-
-	// FailedStep is the 1-based index of the commit that caused a conflict
-	// during the direct per-commit rebase. 0 if direct rebase is clean.
-	FailedStep int
-
-	// TotalSteps is the number of commits between the merge-base and the branch tip.
-	TotalSteps int
-}
 
 // CheckRebase performs a dry-run rebase analysis of branch onto target.
 //
@@ -40,11 +18,11 @@ type RebaseCheck struct {
 // during the check are unreferenced and will be garbage-collected.
 //
 // Requires git >= 2.38 for merge-tree --write-tree.
-func (r *Runner) CheckRebase(ctx context.Context, target, branch string) RebaseCheck {
+func (r *Runner) CheckRebase(ctx context.Context, target, branch string) models.RebaseCheck {
 	// Find the fork point.
 	baseOut, err := r.run(ctx, cmdMergeBase(target, branch)...)
 	if err != nil {
-		return RebaseCheck{}
+		return models.RebaseCheck{}
 	}
 
 	mergeBase := strings.TrimSpace(baseOut)
@@ -52,11 +30,11 @@ func (r *Runner) CheckRebase(ctx context.Context, target, branch string) RebaseC
 	// List commits to replay (oldest first).
 	revOut, err := r.run(ctx, cmdRevListReverse(mergeBase+".."+branch)...)
 	if err != nil {
-		return RebaseCheck{}
+		return models.RebaseCheck{}
 	}
 
 	commits := parseRevList(revOut)
-	result := RebaseCheck{TotalSteps: len(commits)}
+	result := models.RebaseCheck{TotalSteps: len(commits)}
 
 	if len(commits) == 0 {
 		// No commits to rebase — branch is at the merge-base.

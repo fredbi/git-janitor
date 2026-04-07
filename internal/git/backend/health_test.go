@@ -3,6 +3,8 @@ package backend
 import (
 	"context"
 	"testing"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 func TestCheckCountObjects(t *testing.T) {
@@ -16,7 +18,7 @@ func TestCheckCountObjects(t *testing.T) {
 		"garbage: 0\n" +
 		"size-garbage: 0\n"
 
-	report := &HealthReport{OK: true}
+	report := &models.HealthReport{OK: true}
 
 	// We can't call checkCountObjects directly (it runs git),
 	// but we can verify the field names match by running the integration test.
@@ -38,7 +40,7 @@ func TestCheckCountObjects(t *testing.T) {
 }
 
 func TestEvaluateGCAdvice_LooseObjects(t *testing.T) {
-	report := &HealthReport{
+	report := &models.HealthReport{
 		OK:           true,
 		LooseObjects: 5000, // above 50% of 6700 default threshold
 	}
@@ -56,7 +58,7 @@ func TestEvaluateGCAdvice_LooseObjects(t *testing.T) {
 }
 
 func TestEvaluateGCAdvice_PrunePackable(t *testing.T) {
-	report := &HealthReport{
+	report := &models.HealthReport{
 		OK:            true,
 		PrunePackable: 100,
 	}
@@ -70,7 +72,7 @@ func TestEvaluateGCAdvice_PrunePackable(t *testing.T) {
 }
 
 func TestEvaluateGCAdvice_ManyPacks(t *testing.T) {
-	report := &HealthReport{
+	report := &models.HealthReport{
 		OK:    true,
 		Packs: 15,
 	}
@@ -84,7 +86,7 @@ func TestEvaluateGCAdvice_ManyPacks(t *testing.T) {
 }
 
 func TestEvaluateGCAdvice_Garbage(t *testing.T) {
-	report := &HealthReport{
+	report := &models.HealthReport{
 		OK:            true,
 		Garbage:       3,
 		GarbageSizeKB: 512,

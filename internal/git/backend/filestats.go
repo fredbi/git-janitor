@@ -6,39 +6,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 // emptyTreeHashFallback is the well-known SHA-1 of an empty tree in git.
 // Used only if the dynamic lookup fails.
 const emptyTreeHashFallback = "4b825dc642cb6eb9a060e54bf899d69f82cf7137"
-
-// FileStats holds information about large and binary files in the repository.
-type FileStats struct {
-	// LargeFiles lists files in HEAD that exceed the size threshold,
-	// sorted by size descending.
-	LargeFiles []FileEntry
-
-	// LargeBlobs lists the largest blob objects across all history,
-	// sorted by size descending. These may include files that have been
-	// deleted but still occupy space in the pack.
-	LargeBlobs []BlobEntry
-
-	// BinaryFiles lists files in HEAD that git considers binary.
-	BinaryFiles []string
-}
-
-// FileEntry represents a file in the current tree with its size.
-type FileEntry struct {
-	Path string
-	Size int64
-}
-
-// BlobEntry represents a blob object with its size and associated path.
-type BlobEntry struct {
-	Hash string
-	Size int64
-	Path string // may be empty for orphaned blobs
-}
 
 const (
 	// defaultLargeFileThreshold is the minimum size (bytes) for a file to be
@@ -72,7 +46,7 @@ func WithTopBlobs(n int) FileStatsOption {
 // Large files in HEAD are found via git ls-tree -r -l HEAD.
 // Large blobs across all history are found via git rev-list + cat-file.
 // Binary files are detected via git diff --numstat against an empty tree.
-func (r *Runner) FileStats(ctx context.Context, opts ...FileStatsOption) FileStats {
+func (r *Runner) FileStats(ctx context.Context, opts ...FileStatsOption) models.FileStats {
 	cfg := fileStatsConfig{
 		largeThreshold: defaultLargeFileThreshold,
 		topBlobs:       defaultTopBlobs,
@@ -82,7 +56,7 @@ func (r *Runner) FileStats(ctx context.Context, opts ...FileStatsOption) FileSta
 		opt(&cfg)
 	}
 
-	var stats FileStats
+	var stats models.FileStats
 
 	stats.LargeFiles = r.findLargeFiles(ctx, cfg.largeThreshold)
 	stats.LargeBlobs = r.findLargeBlobs(ctx, cfg.topBlobs)
@@ -94,13 +68,13 @@ func (r *Runner) FileStats(ctx context.Context, opts ...FileStatsOption) FileSta
 // findLargeFiles lists files in HEAD exceeding the threshold.
 // Uses: git ls-tree -r -l HEAD
 // Output: mode type hash size\tpath.
-func (r *Runner) findLargeFiles(ctx context.Context, threshold int64) []FileEntry {
+func (r *Runner) findLargeFiles(ctx context.Context, threshold int64) []models.FileEntry {
 	out, err := r.run(ctx, cmdLsTree()...)
 	if err != nil {
 		return nil
 	}
 
-	var large []FileEntry
+	var large []models.FileEntry
 
 	scanner := bufio.NewScanner(strings.NewReader(out))
 	for scanner.Scan() {
@@ -132,7 +106,7 @@ func (r *Runner) findLargeFiles(ctx context.Context, threshold int64) []FileEntr
 		fmt.Sscanf(fields[3], "%d", &size) //nolint:errcheck // best-effort
 
 		if size >= threshold {
-			large = append(large, FileEntry{Path: path, Size: size})
+			large = append(large, models.FileEntry{Path: path, Size: size})
 		}
 	}
 
@@ -144,7 +118,7 @@ func (r *Runner) findLargeFiles(ctx context.Context, threshold int64) []FileEntr
 // findLargeBlobs finds the largest blobs across all history.
 // Uses: git rev-list --objects --all for paths, then
 // extracts OIDs and pipes them to git cat-file --batch-check for sizes.
-func (r *Runner) findLargeBlobs(ctx context.Context, topN int) []BlobEntry {
+func (r *Runner) findLargeBlobs(ctx context.Context, topN int) []models.BlobEntry {
 	// Get all objects with paths.
 	objOut, err := r.run(ctx, cmdRevListObjects()...)
 	if err != nil {
@@ -177,7 +151,7 @@ func (r *Runner) findLargeBlobs(ctx context.Context, topN int) []BlobEntry {
 		return nil
 	}
 
-	var blobs []BlobEntry
+	var blobs []models.BlobEntry
 
 	scanner := bufio.NewScanner(strings.NewReader(checkOut))
 	for scanner.Scan() {
@@ -199,7 +173,7 @@ func (r *Runner) findLargeBlobs(ctx context.Context, topN int) []BlobEntry {
 
 		hash := fields[2]
 
-		blobs = append(blobs, BlobEntry{
+		blobs = append(blobs, models.BlobEntry{
 			Hash: hash,
 			Size: size,
 			Path: paths[hash],
@@ -218,7 +192,7 @@ func (r *Runner) findLargeBlobs(ctx context.Context, topN int) []BlobEntry {
 // emptyTreeHash returns the empty tree hash for the current git installation.
 // It runs `git hash-object -t tree /dev/null` and falls back to the well-known SHA-1.
 func (r *Runner) emptyTreeHash(ctx context.Context) string {
-	out, err := r.run(ctx, "hash-object", "-t", "tree", "/dev/null")
+	out, err := r.run(ctx, cmdHashObject()...)
 	if err != nil {
 		return emptyTreeHashFallback
 	}

@@ -1,12 +1,12 @@
 package engine
 
-type errEngine string
+type engineError string
 
-func (e errEngine) Error() string {
+func (e engineError) Error() string {
 	return string(e)
 }
 
 const (
-	ErrEngine         errEngine = "error git-janitor engine"
-	ErrNotImplemented errEngine = "not implemented"
+	ErrEngine         engineError = "error git-janitor engine"
+	ErrNotImplemented engineError = "not implemented"
 )

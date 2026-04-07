@@ -3,6 +3,8 @@ package backend
 import (
 	"context"
 	"testing"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 func TestFormatBytes(t *testing.T) {
@@ -20,9 +22,9 @@ func TestFormatBytes(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := formatBytes(tt.input)
+		got := models.FormatBytes(tt.input)
 		if got != tt.want {
-			t.Errorf("formatBytes(%d) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("models.FormatBytes(%d) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }
@@ -32,8 +34,8 @@ func TestIntegration_Size(t *testing.T) {
 
 	s := r.Size(context.Background())
 
-	t.Logf(".git size: %s (%d bytes)", formatBytes(s.GitDirBytes), s.GitDirBytes)
-	t.Logf("reachable: %s (%d bytes)", formatBytes(s.ReachableBytes), s.ReachableBytes)
+	t.Logf(".git size: %s (%d bytes)", models.FormatBytes(s.GitDirBytes), s.GitDirBytes)
+	t.Logf("reachable: %s (%d bytes)", models.FormatBytes(s.ReachableBytes), s.ReachableBytes)
 	t.Logf("repackAdvised=%v reasons=%v", s.RepackAdvised, s.RepackReasons)
 
 	if s.GitDirBytes == 0 {

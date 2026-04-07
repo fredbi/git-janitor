@@ -12,7 +12,6 @@ type options struct {
 	cfg     *config.Config
 	checks  *registry.Registry[ifaces.Check]
 	actions *registry.Registry[ifaces.Action]
-	runners *registry.Registry[ifaces.RunnerFactory]
 }
 
 func WithConfig(cfg *config.Config) Option {
@@ -30,12 +29,6 @@ func WithChecks(checks *registry.Registry[ifaces.Check]) Option {
 func WithActions(actions *registry.Registry[ifaces.Action]) Option {
 	return func(o *options) {
 		o.actions = actions
-	}
-}
-
-func WithRunners(runners *registry.Registry[ifaces.RunnerFactory]) Option {
-	return func(o *options) {
-		o.runners = runners
 	}
 }
 

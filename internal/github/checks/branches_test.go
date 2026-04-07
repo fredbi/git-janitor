@@ -5,7 +5,6 @@ package checks
 import (
 	"testing"
 
-	"github.com/fredbi/git-janitor/internal/github/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -20,7 +19,7 @@ func TestDefaultBranchMismatch(t *testing.T) {
 	check := NewDefaultBranchMismatch()
 
 	t.Run("matching branches", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.DefaultBranch = testDefaultBranch
 		data.LocalDefaultBranch = testDefaultBranch
 		alerts := collectAlerts(t, check, data)
@@ -28,7 +27,7 @@ func TestDefaultBranchMismatch(t *testing.T) {
 	})
 
 	t.Run("mismatched branches", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.DefaultBranch = testDefaultBranch
 		data.LocalDefaultBranch = "master"
 		alerts := collectAlerts(t, check, data)
@@ -36,7 +35,7 @@ func TestDefaultBranchMismatch(t *testing.T) {
 	})
 
 	t.Run("no local branch info", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.DefaultBranch = testDefaultBranch
 		// LocalDefaultBranch is "" (not set)
 		alerts := collectAlerts(t, check, data)
@@ -44,7 +43,7 @@ func TestDefaultBranchMismatch(t *testing.T) {
 	})
 
 	t.Run("no github branch info", func(t *testing.T) {
-		data := backend.NewRepoInfo("owner", testRepo)
+		data := models.NewPlatformInfo("owner", testRepo)
 		data.LocalDefaultBranch = testDefaultBranch
 		// DefaultBranch is "" (not set)
 		alerts := collectAlerts(t, check, data)

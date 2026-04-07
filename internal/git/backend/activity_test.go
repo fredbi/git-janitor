@@ -5,20 +5,22 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
 func TestDeriveStaleness(t *testing.T) {
 	tests := []struct {
 		name string
-		a    Activity
+		a    models.Activity
 		want string
 	}{
-		{"active", Activity{Commits30d: 5}, StalenessActive},
-		{"recent", Activity{Commits90d: 3}, StalenessRecent},
-		{"stale", Activity{Commits360d: 1}, StalenessStale},
-		{"dormant", Activity{}, StalenessDormant},
+		{"active", models.Activity{Commits30d: 5}, models.StalenessActive},
+		{"recent", models.Activity{Commits90d: 3}, models.StalenessRecent},
+		{"stale", models.Activity{Commits360d: 1}, models.StalenessStale},
+		{"dormant", models.Activity{}, models.StalenessDormant},
 		// 30d > 0 wins even if others are set.
-		{"active wins", Activity{Commits7d: 2, Commits30d: 10, Commits90d: 20, Commits360d: 50}, StalenessActive},
+		{"active wins", models.Activity{Commits7d: 2, Commits30d: 10, Commits90d: 20, Commits360d: 50}, models.StalenessActive},
 	}
 
 	for _, tt := range tests {
@@ -34,21 +36,21 @@ func TestDeriveStaleness(t *testing.T) {
 func TestCountTagsInWindow(t *testing.T) {
 	now := time.Now()
 
-	tags := []Tag{
+	tags := []models.Tag{
 		{Name: "v1.0.0", Date: now.AddDate(0, 0, -10)},                   // 10 days ago — in window
 		{Name: "v0.9.0", Date: now.AddDate(0, 0, -100)},                  // 100 days ago — in window
 		{Name: "v0.1.0", Date: now.AddDate(-2, 0, 0)},                    // 2 years ago — out
 		{Name: "v0.8.0", Date: now.AddDate(0, 0, -50), RemoteOnly: true}, // remote-only — skipped
 	}
 
-	got := CountTagsInWindow(tags, 360)
+	got := models.CountTagsInWindow(tags, 360)
 	if got != 2 {
-		t.Errorf("CountTagsInWindow(360) = %d, want 2", got)
+		t.Errorf("models.CountTagsInWindow(360) = %d, want 2", got)
 	}
 
-	got = CountTagsInWindow(tags, 30)
+	got = models.CountTagsInWindow(tags, 30)
 	if got != 1 {
-		t.Errorf("CountTagsInWindow(30) = %d, want 1", got)
+		t.Errorf("models.CountTagsInWindow(30) = %d, want 1", got)
 	}
 }
 

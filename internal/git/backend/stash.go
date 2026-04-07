@@ -4,22 +4,12 @@ import (
 	"bufio"
 	"context"
 	"strings"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
-// Stash represents a single stash entry.
-type Stash struct {
-	// Ref is the stash reference (e.g. "stash@{0}").
-	Ref string
-
-	// Branch is the branch the stash was created on.
-	Branch string
-
-	// Message is the stash description.
-	Message string
-}
-
 // Stashes runs git stash list and returns all stash entries.
-func (r *Runner) Stashes(ctx context.Context) ([]Stash, error) {
+func (r *Runner) Stashes(ctx context.Context) ([]models.Stash, error) {
 	out, err := r.run(ctx, cmdStashList()...)
 	if err != nil {
 		return nil, err
@@ -34,8 +24,8 @@ func (r *Runner) Stashes(ctx context.Context) ([]Stash, error) {
 //
 //	stash@{0}: On main: my stash message
 //	stash@{1}: WIP on feature: abc1234 commit message
-func parseStashes(output string) []Stash {
-	var stashes []Stash
+func parseStashes(output string) []models.Stash {
+	var stashes []models.Stash
 
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
@@ -54,7 +44,7 @@ func parseStashes(output string) []Stash {
 }
 
 // parseStashLine parses a single stash list line.
-func parseStashLine(line string) *Stash {
+func parseStashLine(line string) *models.Stash {
 	// Format: "stash@{N}: On <branch>: <message>"
 	// or:     "stash@{N}: WIP on <branch>: <hash> <message>"
 
@@ -63,7 +53,7 @@ func parseStashLine(line string) *Stash {
 		return nil
 	}
 
-	stash := &Stash{Ref: ref}
+	stash := &models.Stash{Ref: ref}
 
 	switch {
 	case strings.HasPrefix(rest, "On "):

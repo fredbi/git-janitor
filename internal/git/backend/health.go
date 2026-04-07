@@ -6,52 +6,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/fredbi/git-janitor/internal/models"
 )
-
-// HealthReport holds the result of a repository health check.
-type HealthReport struct {
-	// Integrity
-	//
-	// FSCKErrors lists corruption issues found by git fsck --connectivity-only.
-	// Empty means the repository is structurally sound.
-	FSCKErrors []string
-
-	// OK is true when no integrity issues are found.
-	OK bool
-
-	// GC diagnostics
-	//
-	// LooseObjects is the number of unpacked loose objects.
-	LooseObjects int
-
-	// LooseSizeKB is the total size of loose objects in kilobytes.
-	LooseSizeKB int
-
-	// PackedObjects is the number of objects in pack files.
-	PackedObjects int
-
-	// Packs is the number of pack files.
-	Packs int
-
-	// PackSizeKB is the total size of all pack files in kilobytes.
-	PackSizeKB int
-
-	// PrunePackable is the number of loose objects also present in a pack
-	// (wasted space, reclaimable by git gc).
-	PrunePackable int
-
-	// Garbage is the number of garbage files in the object store.
-	Garbage int
-
-	// GarbageSizeKB is the total size of garbage files in kilobytes.
-	GarbageSizeKB int
-
-	// GCAdvised is true when conditions suggest git gc would be beneficial.
-	GCAdvised bool
-
-	// GCReasons lists human-readable reasons why GC is advised.
-	GCReasons []string
-}
 
 const (
 	// defaultGCAutoThreshold is git's default threshold for auto-gc (loose objects).
@@ -78,8 +35,8 @@ const (
 //
 // The fsck check uses --connectivity-only for speed (skips blob content verification).
 // Dangling objects are not reported as errors (they are normal after rebase/amend).
-func (r *Runner) Health(ctx context.Context) HealthReport {
-	report := HealthReport{OK: true}
+func (r *Runner) Health(ctx context.Context) models.HealthReport {
+	report := models.HealthReport{OK: true}
 
 	// Integrity check.
 	r.checkFSCK(ctx, &report)
@@ -93,7 +50,7 @@ func (r *Runner) Health(ctx context.Context) HealthReport {
 
 // checkFSCK runs git fsck --connectivity-only and collects errors.
 // Dangling objects and phantom objects are excluded (normal after rebase/amend).
-func (r *Runner) checkFSCK(ctx context.Context, report *HealthReport) {
+func (r *Runner) checkFSCK(ctx context.Context, report *models.HealthReport) {
 	// fsck writes issues to stderr, exits non-zero on problems.
 	// Our run() captures stderr in the error message.
 	_, err := r.run(ctx, cmdFSCK()...)
@@ -132,7 +89,7 @@ func (r *Runner) checkFSCK(ctx context.Context, report *HealthReport) {
 }
 
 // checkCountObjects runs git count-objects -v and parses the output.
-func (r *Runner) checkCountObjects(ctx context.Context, report *HealthReport) {
+func (r *Runner) checkCountObjects(ctx context.Context, report *models.HealthReport) {
 	out, err := r.run(ctx, cmdCountObjects()...)
 	if err != nil {
 		return
@@ -169,7 +126,7 @@ func (r *Runner) checkCountObjects(ctx context.Context, report *HealthReport) {
 }
 
 // evaluateGCAdvice determines whether git gc would be beneficial.
-func (r *Runner) evaluateGCAdvice(ctx context.Context, report *HealthReport) {
+func (r *Runner) evaluateGCAdvice(ctx context.Context, report *models.HealthReport) {
 	threshold := defaultGCAutoThreshold
 
 	// Check if the user has a custom gc.auto setting.

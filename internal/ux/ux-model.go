@@ -7,12 +7,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/fredbi/git-janitor/internal/engine"
+	"github.com/fredbi/git-janitor/internal/models"
 	"github.com/fredbi/git-janitor/internal/ux/commands"
 	wizard "github.com/fredbi/git-janitor/internal/ux/commands/config-wizard"
 	"github.com/fredbi/git-janitor/internal/ux/commands/help"
 	"github.com/fredbi/git-janitor/internal/ux/commands/scan"
 	"github.com/fredbi/git-janitor/internal/ux/gadgets"
+	"github.com/fredbi/git-janitor/internal/ux/key"
 	"github.com/fredbi/git-janitor/internal/ux/panels/infos"
 	"github.com/fredbi/git-janitor/internal/ux/panels/repos"
 	"github.com/fredbi/git-janitor/internal/ux/statusbar"
@@ -52,7 +53,7 @@ type Model struct {
 	Quitting     bool
 	SelectedRepo string           // path of the currently selected repo (to detect changes)
 	SelectedRoot int              // index of the root containing the selected repo
-	LastRepoInfo *engine.RepoInfo // most recent RepoInfo for the selected repo
+	LastRepoInfo *models.RepoInfo // most recent RepoInfo for the selected repo
 
 	// PendingAction holds an action awaiting user confirmation (Y/N).
 	// nil when no confirmation is pending.
@@ -64,19 +65,18 @@ type Model struct {
 // If cfg is nil a zero-value configuration is used.
 func New(opts ...Option) *Model {
 	o := applyOptionsWithDefaults(opts)
-	rightPanel := infos.New(o.Engine)
 	m := &Model{
 		options: o,
-		Repos:   repos.New(o.Cfg),
-		Right:   rightPanel,
-		Input:   commands.New(),
-		Status:  statusbar.New(),
-		Help:    help.New(),
-		Wizard:  wizard.New(o.Cfg),
 		Focused: paneRepos,
 	}
 
-	uxtypes.CurrentTheme = &m.Theme // TODO(fred): why do we need a global there?
+	theme := &m.Theme
+	m.Repos = repos.New(o.Cfg, theme)
+	m.Right = infos.New(o.Engine, theme)
+	m.Input = commands.New(theme)
+	m.Status = statusbar.New(theme)
+	m.Help = help.New(theme)
+	m.Wizard = wizard.New(o.Cfg)
 
 	return m
 }
@@ -129,7 +129,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case uxtypes.CopyToClipboardMsg:
 		if err := gadgets.CopyToClipboard(context.Background(), msg.Text); err != nil { // TODO: command context?
-			m.Status.SetMessagef("Clipboard: %v", err.Error)
+			m.Status.SetMessagef("Clipboard: %v", err)
 		} else {
 			m.Status.SetMessage("Copied to clipboard")
 		}
@@ -214,21 +214,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := KeyMsgBinding(msg)
+	kb := key.MsgBinding(msg)
 
 	// Global keys that work regardless of focus.
-	switch key {
-	case CtrlC, CtrlQ:
+	switch kb {
+	case key.CtrlC, key.CtrlQ:
 		m.Quitting = true
 
 		return m, tea.Quit
 
-	case CtrlH:
+	case key.CtrlH:
 		m.Help.Toggle()
 
 		return m, nil
 
-	case CtrlR:
+	case key.CtrlR:
 		// Refresh: fetch --all --tags on the selected repo, then re-inspect.
 		repo, ok := m.Repos.SelectedRepo()
 		if !ok {
@@ -247,7 +247,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, tea.Batch(progressCmd, m.refreshRepo(repo.Path))
 
-	case CtrlA:
+	case key.CtrlA:
 		// Cycle tabs in the focused panel.
 		switch m.Focused {
 		case paneRepos:
@@ -268,13 +268,13 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleHelpKey(msg)
 	}
 
-	switch key {
-	case Tab:
+	switch kb {
+	case key.Tab:
 		m.cycleFocus(1)
 
 		return m, tea.Batch(m.applyFocus(), m.checkSelectedRepo())
 
-	case ShiftTab:
+	case key.ShiftTab:
 		m.cycleFocus(-1)
 
 		return m, tea.Batch(m.applyFocus(), m.checkSelectedRepo())
@@ -286,20 +286,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Panel-level shortcuts (only when a panel is focused).
-	switch key {
-	case Slash:
+	switch kb {
+	case key.Slash:
 		// Jump to input Pane on "/" for quick Command entry.
 		m.Focused = paneInput
 		m.Input.Input.SetValue("/")
 
 		return m, m.applyFocus()
 
-	case KeyQ:
-		m.Quitting = true
-
-		return m, tea.Quit
-
-	case RightArrow, KeyL:
+	case key.RightArrow, key.L:
 		switch m.Focused {
 		case paneRepos:
 			m.Repos.CycleTab()
@@ -313,7 +308,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case LeftArrow, KeyH:
+	case key.LeftArrow, key.H:
 		switch m.Focused {
 		case paneRepos:
 			m.Repos.CycleTabBack()
@@ -335,8 +330,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch KeyMsgBinding(msg) {
-	case Esc, KeyQ:
+	if key.MsgBinding(msg).ClosePopup() {
 		m.Help.Hide()
 
 		return m, nil
@@ -349,8 +343,8 @@ func (m *Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch KeyMsgBinding(msg) {
-	case Enter:
+	switch key.MsgBinding(msg) {
+	case key.Enter:
 		cmd := m.Input.Submit()
 		result := commands.ExecuteCommand(cmd)
 
@@ -405,7 +399,7 @@ func (m *Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case Esc:
+	case key.Esc:
 		m.Input.Input.SetValue("")
 		m.Focused = paneRepos
 
@@ -521,10 +515,10 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // handleWizardKey routes key events to the wizard overlay.
 func (m *Model) handleWizardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := KeyMsgBinding(msg)
+	kb := key.MsgBinding(msg)
 
 	// Global quit still works.
-	if key.Quit() {
+	if kb.Quit() {
 		m.Quitting = true
 
 		return m, tea.Quit
@@ -542,6 +536,7 @@ func (m *Model) handleWizardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // It updates the config, rebuilds tabs, triggers a scan, and closes the wizard.
 func (m *Model) handleWizardDone(result *uxtypes.ConfigWizardMsg) (tea.Model, tea.Cmd) {
 	m.Cfg = result.Cfg
+	m.Engine.Reload(result.Cfg)
 	m.Wizard.Hide()
 	m.Repos.RebuildTabs(m.Cfg)
 	m.Repos.SetSize(m.Repos.Width, m.Repos.Height)
@@ -596,7 +591,7 @@ func (m *Model) handleRepoInfo(msg uxtypes.RepoInfoMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Only apply if this is still the selected repo.
-	if info.GitInfo.Path != m.SelectedRepo {
+	if info.Path != m.SelectedRepo {
 		return m, nil
 	}
 
@@ -617,14 +612,14 @@ func (m *Model) handleRepoRefresh(msg uxtypes.RepoRefreshMsg) (tea.Model, tea.Cm
 		return m, nil
 	}
 
-	if info.GitInfo.Path != m.SelectedRepo {
+	if info.Path != m.SelectedRepo {
 		return m, nil
 	}
 
-	if info.GitInfo.FetchErr != nil {
+	if info.FetchErr != nil {
 		m.Status.SetMessage("Remote unavailable — showing local data")
 	} else {
-		m.Status.SetMessage("Fetched " + msg.Info.GitInfo.Path)
+		m.Status.SetMessage("Fetched " + msg.Info.Path)
 	}
 
 	// Always update panels with local data, even if fetch failed.
@@ -646,35 +641,31 @@ func (m *Model) handleGitHubInfo(msg uxtypes.GitHubInfoMsg) (tea.Model, tea.Cmd)
 		return m, nil
 	}
 
-	if msg.Data.GitHubInfo == nil {
+	if msg.Data.Platform == nil {
 		return m, nil
 	}
 
-	if msg.Data.GitHubInfo.Err != nil {
-		m.Status.SetMessage("GitHub: " + msg.Data.GitHubInfo.Err.Error())
+	if msg.Data.Platform.Err != nil {
+		m.Status.SetMessage("GitHub: " + msg.Data.Platform.Err.Error())
 	}
 
-	// Inject local default branch for cross-check.
-	if m.LastRepoInfo != nil {
-		msg.Data.GitHubInfo.LocalDefaultBranch = m.LastRepoInfo.GitInfo.DefaultBranch
-	}
-
-	m.Right.SetGitHubData(msg.Data) // TODO: m.Cfg.EnabledChecks(m.SelectedRoot))
+	// The engine already injected LocalDefaultBranch during Collect.
+	m.Right.SetGitHubData(msg.Data)
 
 	return m, nil
 }
 
 // handleConfirmKey processes Y/N input when a confirmation is pending.
 func (m *Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	key := KeyMsgBinding(msg)
+	kb := key.MsgBinding(msg)
 	switch {
-	case key.Confirm():
+	case kb.Confirm():
 		pending := m.PendingAction
 		m.PendingAction = nil
 
 		return m, m.runAction(*pending)
 
-	case key.Cancel():
+	case kb.Cancel():
 		m.PendingAction = nil
 		m.Status.SetMessage("Action cancelled")
 
@@ -687,6 +678,8 @@ func (m *Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleActionResult processes the result of an executed action.
+// On success, it performs a full re-collect (not fast) so that checks
+// are re-evaluated against the updated repository state.
 func (m *Model) handleActionResult(msg uxtypes.ActionResultMsg) (tea.Model, tea.Cmd) {
 	if msg.OK {
 		m.Status.SetMessagef("✓ %s: %s", msg.ActionName, msg.Message)
@@ -694,9 +687,9 @@ func (m *Model) handleActionResult(msg uxtypes.ActionResultMsg) (tea.Model, tea.
 		m.Status.SetMessagef("✗ %s: %s", msg.ActionName, msg.Message)
 	}
 
-	// Re-fetch the repo info to reflect changes.
+	// Re-collect repo info (full, not fast) to reflect changes and re-evaluate alerts.
 	if msg.RepoPath == m.SelectedRepo {
-		return m, m.fetchRepoInfo(msg.RepoPath, true)
+		return m, m.fullRepoCheck(msg.RepoPath)
 	}
 
 	return m, nil
@@ -723,8 +716,7 @@ func (m *Model) applyThemeCommand(name string) {
 	}
 
 	m.Theme = th
-	uxtypes.CurrentTheme = &m.Theme // TODO: find a way to avoid this global assignment
-	m.Repos.RebuildDelegate()
+	m.setTheme()
 	m.Status.SetMessage("Theme: " + th.Name())
 }
 
@@ -781,4 +773,14 @@ func (m *Model) View() string {
 	}
 
 	return base
+}
+
+// setTheme propagates the current theme to all sub-components.
+func (m *Model) setTheme() {
+	theme := &m.Theme
+	m.Repos.SetTheme(theme)
+	m.Right.SetTheme(theme)
+	m.Input.Theme = theme
+	m.Status.Theme = theme
+	m.Help.Theme = theme
 }

@@ -17,6 +17,7 @@ type TickMsg struct{}
 
 // StatusBar renders either a status message or an animated progress bar.
 type StatusBar struct {
+	Theme    *uxtypes.Theme
 	Message  string
 	Width    int
 	progress progress.Model
@@ -26,13 +27,14 @@ type StatusBar struct {
 }
 
 // New creates a StatusBar with a default ready message.
-func New() StatusBar {
+func New(theme *uxtypes.Theme) StatusBar {
 	p := progress.New(
 		progress.WithDefaultGradient(),
 		progress.WithoutPercentage(),
 	)
 
 	return StatusBar{
+		Theme:    theme,
 		Message:  "Ready. Press Tab to switch panes, / to enter a command.",
 		progress: p,
 	}
@@ -107,10 +109,7 @@ func (s *StatusBar) Update(msg tea.Msg) (tea.Cmd, bool) {
 
 // View renders the status bar or progress bar.
 func (s *StatusBar) View() string {
-	t := uxtypes.CurrentTheme
-	if t == nil {
-		return ""
-	}
+	t := s.Theme
 
 	if s.active {
 		return s.viewProgress(t)

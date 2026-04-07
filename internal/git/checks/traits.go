@@ -4,7 +4,6 @@ import (
 	"context"
 	"iter"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -25,16 +24,11 @@ func NewShallow() Shallow {
 }
 
 // Evaluate inspects the IsShallow field from RepoInfo.
-func (c Shallow) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c Shallow) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c Shallow) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c Shallow) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if !info.IsShallow {
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),
@@ -66,16 +60,11 @@ func NewSubmodules() Submodules {
 }
 
 // Evaluate inspects the HasSubmodules field from RepoInfo.
-func (c Submodules) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c Submodules) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c Submodules) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c Submodules) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if !info.HasSubmodules {
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),
@@ -107,16 +96,11 @@ func NewLFS() LFS {
 }
 
 // Evaluate inspects the HasLFS field from RepoInfo.
-func (c LFS) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c LFS) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c LFS) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c LFS) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if !info.HasLFS {
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),

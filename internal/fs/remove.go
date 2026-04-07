@@ -5,10 +5,10 @@ import (
 	"errors"
 	"os"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
+	"github.com/fredbi/git-janitor/internal/models"
 )
 
-func DeleteLocalRepo(_ context.Context, info *backend.RepoInfo) error {
+func DeleteLocalRepo(_ context.Context, info *models.RepoInfo) error {
 	if info == nil {
 		return errors.New("repo info is required to delete local clone")
 	}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/fredbi/git-janitor/internal/git/backend"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -26,16 +25,11 @@ func NewConfigNoEmail() ConfigNoEmail {
 }
 
 // Evaluate inspects the RepoConfig from RepoInfo.
-func (c ConfigNoEmail) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c ConfigNoEmail) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c ConfigNoEmail) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c ConfigNoEmail) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if info.Config == nil || info.Config.UserEmail.Value != "" {
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),
@@ -68,16 +62,11 @@ func NewConfigUnsigned() ConfigUnsigned {
 }
 
 // Evaluate inspects the RepoConfig from RepoInfo.
-func (c ConfigUnsigned) Evaluate(ctx context.Context) (iter.Seq[models.Alert], error) {
-	info, err := repoInfoCtx(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+func (c ConfigUnsigned) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	return c.evaluate(info)
 }
 
-func (c ConfigUnsigned) evaluate(info *backend.RepoInfo) (iter.Seq[models.Alert], error) {
+func (c ConfigUnsigned) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	if info.Config == nil || info.Config.CommitSign.Value == "true" {
 		return singleAlert(models.Alert{
 			CheckName: c.Name(),
