@@ -45,10 +45,14 @@ func (r *Runner) CollectRepoInfoFast(ctx context.Context) *models.RepoInfo {
 		return info
 	}
 
-	info.Stashes, _ = r.Stashes(ctx)             // non-fatal
-	info.DefaultBranch, _ = r.DefaultBranch(ctx) // non-fatal
-	info.LastCommit, _ = r.LastCommitTime(ctx)   // non-fatal
-	info.Worktrees, _ = r.Worktrees(ctx)         // non-fatal
+	info.Stashes, _ = r.Stashes(ctx)                  // non-fatal
+	info.DefaultBranch, _ = r.DefaultBranch(ctx)      // non-fatal
+	info.LastCommit, _ = r.LastCommitTime(ctx)        // non-fatal
+	info.LastCommitMessage = r.LastCommitMessage(ctx) // non-fatal
+	info.Worktrees, _ = r.Worktrees(ctx)              // non-fatal
+
+	// Compute last local update: last commit if clean, newest dirty file mtime if dirty.
+	info.LastLocalUpdate = deriveLastLocalUpdate(r.Dir, info.Status, info.LastCommit)
 
 	// Lightweight traits (filesystem checks, no git commands).
 	info.HasSubmodules = r.HasSubmodules()
@@ -97,10 +101,14 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 		return info
 	}
 
-	info.Stashes, _ = r.Stashes(ctx)             // non-fatal
-	info.DefaultBranch, _ = r.DefaultBranch(ctx) // non-fatal
-	info.LastCommit, _ = r.LastCommitTime(ctx)   // non-fatal
-	info.Worktrees, _ = r.Worktrees(ctx)         // non-fatal
+	info.Stashes, _ = r.Stashes(ctx)                  // non-fatal
+	info.DefaultBranch, _ = r.DefaultBranch(ctx)      // non-fatal
+	info.LastCommit, _ = r.LastCommitTime(ctx)        // non-fatal
+	info.LastCommitMessage = r.LastCommitMessage(ctx) // non-fatal
+	info.Worktrees, _ = r.Worktrees(ctx)              // non-fatal
+
+	// Compute last local update: last commit if clean, newest dirty file mtime if dirty.
+	info.LastLocalUpdate = deriveLastLocalUpdate(r.Dir, info.Status, info.LastCommit)
 
 	// Repository traits.
 	info.IsShallow = r.IsShallow(ctx)

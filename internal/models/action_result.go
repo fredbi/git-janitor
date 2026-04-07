@@ -11,6 +11,18 @@ type ActionResult struct {
 
 	// Message describes what happened (success or failure).
 	Message string
+
+	// CommandLog records the commands executed during this action.
+	CommandLog []string
+}
+
+// ToResult converts an ActionResult to a Result.
+func (r ActionResult) ToResult() Result {
+	return Result{
+		OK:         r.OK,
+		Message:    r.Message,
+		CommandLog: r.CommandLog,
+	}
 }
 
 // DefaultPushRemote returns the remote to push to for the given repo.

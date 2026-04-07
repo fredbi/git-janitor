@@ -17,6 +17,7 @@ import (
 	branches "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-branches"
 	facts "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-facts"
 	recent "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-recent"
+	stashes "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-stashes"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -30,17 +31,19 @@ const (
 	TabBranches                 // branches tab
 	TabAlerts                   // alerts tab
 	TabActions                  // actions tab
+	TabStashes                  // stashes tab
 	TabRecent                   // recent activity tab
 )
 
 // RightTabCount is the number of tabs in the right panel.
-const RightTabCount = 5
+const RightTabCount = 6
 
 // Panel is a tab container for the right Pane.
 type Panel struct {
 	Theme    *uxtypes.Theme
 	Facts    facts.Panel
 	Branches branches.Panel
+	Stashes  stashes.Panel
 	Alerts   alerts.Panel
 	Actions  actions.Panel
 	Recent   recent.Panel
@@ -64,6 +67,7 @@ func New(eng ifaces.Engineer, theme *uxtypes.Theme) Panel {
 		Theme:    theme,
 		Facts:    facts.New(theme),
 		Branches: branches.New(theme),
+		Stashes:  stashes.New(theme),
 		Alerts:   alerts.New(theme),
 		Actions:  actions.New(eng, theme),
 		Recent:   recent.New(theme),
@@ -77,6 +81,7 @@ func (p *Panel) SetTheme(theme *uxtypes.Theme) {
 	p.Theme = theme
 	p.Facts.Theme = theme
 	p.Branches.Theme = theme
+	p.Stashes.Theme = theme
 	p.Alerts.Theme = theme
 	p.Actions.Theme = theme
 	p.Recent.Theme = theme
@@ -115,6 +120,7 @@ var RightTabDefs = []struct { //nolint:gochecknoglobals // tab definition table
 	{"Branches", TabBranches},
 	{"Alerts", TabAlerts},
 	{"Actions", TabActions},
+	{"Stashes", TabStashes},
 	{"Recent", TabRecent},
 }
 
@@ -124,6 +130,7 @@ func (p *Panel) SetRepoInfo(info *models.RepoInfo) {
 	p.RepoPath = info.Path
 	p.Facts.SetInfo(info)
 	p.Branches.SetInfo(info)
+	p.Stashes.SetInfo(info)
 	p.Actions.Clear()
 	p.LastAlerts = nil // clear previous alerts before re-evaluation
 
@@ -210,6 +217,7 @@ func (p *Panel) SetSize(w, h int) {
 
 	p.Facts.SetSize(contentW, contentH)
 	p.Branches.SetSize(contentW, contentH)
+	p.Stashes.SetSize(contentW, contentH)
 	p.Alerts.SetSize(contentW, contentH)
 	p.Actions.SetSize(contentW, contentH)
 	p.Recent.SetSize(contentW, contentH)
@@ -233,6 +241,8 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 		return p.Facts.Update(msg)
 	case TabBranches:
 		return p.Branches.Update(msg)
+	case TabStashes:
+		return p.Stashes.Update(msg)
 	case TabAlerts:
 		return p.Alerts.Update(msg)
 	case TabActions:
@@ -288,6 +298,8 @@ func (p *Panel) View(focused bool) string {
 		content = p.Facts.View()
 	case TabBranches:
 		content = p.Branches.View()
+	case TabStashes:
+		content = p.Stashes.View()
 	case TabAlerts:
 		content = p.Alerts.View()
 	case TabActions:

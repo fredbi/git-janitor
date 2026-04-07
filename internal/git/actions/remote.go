@@ -44,5 +44,5 @@ func (a RenameRemote) execute(ctx context.Context, r *backend.Runner, _ *models.
 
 	result := r.RenameRemote(ctx, subjects[0], subjects[1])
 
-	return models.Result(result), nil
+	return result.ToResult(), nil
 }

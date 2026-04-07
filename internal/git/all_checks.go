@@ -35,5 +35,9 @@ func AllChecks() iter.Seq[ifaces.Check] {
 		checks.NewShallow(),
 		checks.NewSubmodules(),
 		checks.NewLFS(),
+		checks.NewInactiveDirty(),
+		checks.NewStaleDirty(),
+		checks.NewStaleStash(),
+		checks.NewInactiveNondefault(),
 	})
 }

@@ -30,6 +30,11 @@ defaults:
       # File stats
       - name: filestats-large-files
       - name: filestats-binary
+      # Staleness
+      - name: git-inactive-dirty
+      - name: git-stale-dirty
+      - name: git-stale-stash
+      - name: git-inactive-nondefault
       # Traits
       - name: traits-shallow
       - name: traits-submodules
@@ -64,6 +69,15 @@ defaults:
         auto: false
       - name: fetch-tags
         auto: true
+      # Staleness actions
+      - name: git-stash-dirty
+        auto: false
+      - name: git-commit-dirty
+        auto: false
+      - name: git-commit-stash
+        auto: false
+      - name: git-switch-default-branch
+        auto: false
       # Clone management
       - name: delete-local-clone
         auto: false

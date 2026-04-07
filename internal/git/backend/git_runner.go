@@ -19,11 +19,28 @@ type Runner struct {
 	// Timeout overrides the default command timeout.
 	// Zero means use the default (30s).
 	Timeout time.Duration
+
+	// CmdLog records every git command executed by this runner.
+	// Enable with StartLogging(). Retrieve with Commands().
+	CmdLog []string
+	logging bool
 }
 
 // NewRunner returns a Runner for the given repository directory.
 func NewRunner(dir string) *Runner {
 	return &Runner{Dir: dir}
+}
+
+// StartLogging enables command logging. All subsequent git commands
+// executed by this runner (and worktree runners it creates) are recorded.
+func (r *Runner) StartLogging() {
+	r.logging = true
+	r.CmdLog = nil
+}
+
+// Commands returns the recorded command log.
+func (r *Runner) Commands() []string {
+	return r.CmdLog
 }
 
 // Run executes a git command and returns its stdout output.
@@ -34,6 +51,10 @@ func (r *Runner) Run(ctx context.Context, args ...string) (string, error) {
 }
 
 func (r *Runner) run(ctx context.Context, args ...string) (string, error) {
+	if r.logging {
+		r.CmdLog = append(r.CmdLog, "git "+strings.Join(args, " "))
+	}
+
 	timeout := r.Timeout
 	if timeout == 0 {
 		timeout = defaultTimeout

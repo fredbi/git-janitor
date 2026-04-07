@@ -273,30 +273,100 @@ func Load(file string) (*Config, error) {
 //
 // If the file does not exist it returns the embedded defaults and no error.
 // Any other I/O or parse error is reported.
+//
+// The user config is overlaid on top of embedded defaults. Checks and actions
+// lists are merged: any default entries not present in the user config are
+// appended so that newly added built-in checks are picked up automatically.
 func LoadDefault() (*Config, error) {
-	cfg, err := loadDefaults()
+	defaults, err := loadDefaults()
 	if err != nil {
 		return nil, fmt.Errorf("loading default config: %w", err)
 	}
 
 	path, err := DefaultConfigPath()
 	if err != nil {
-		return cfg, nil //nolint:nilerr // Cannot determine path — return defaults silently.
+		return defaults, nil //nolint:nilerr // Cannot determine path — return defaults silently.
 	}
 
 	fsys := os.DirFS(filepath.Dir(path))
 	pth := filepath.Join(".", filepath.Base(path))
 
-	result, err := load(fsys, pth, cfg)
+	// Snapshot the default rules before the user config overwrites slices.
+	defaultRules := copyRules(defaults.Defaults.Rules)
+
+	result, err := load(fsys, pth, defaults)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return cfg, nil
+			return defaults, nil
 		}
 
 		return nil, fmt.Errorf("loading config from %s: %w", path, err)
 	}
 
+	// Merge: add default checks/actions not present in the user config.
+	mergeRules(result, defaultRules)
+
 	return result, nil
+}
+
+// copyRules returns a deep copy of a RulesConfig so the original
+// is not mutated when mapstructure overwrites slices.
+func copyRules(r *RulesConfig) *RulesConfig {
+	if r == nil {
+		return nil
+	}
+
+	cp := &RulesConfig{
+		Checks:  make([]CheckConfig, len(r.Checks)),
+		Actions: make([]ActionConfig, len(r.Actions)),
+	}
+
+	copy(cp.Checks, r.Checks)
+	copy(cp.Actions, r.Actions)
+
+	return cp
+}
+
+// mergeRules supplements the config's rules with any default checks and actions
+// that are not already present. This ensures newly added built-in checks are
+// picked up even when the user has an existing config file.
+func mergeRules(cfg *Config, defaults *RulesConfig) {
+	if defaults == nil || cfg.Defaults.Rules == nil {
+		return
+	}
+
+	cfg.Defaults.Rules.Checks = mergeChecks(cfg.Defaults.Rules.Checks, defaults.Checks)
+	cfg.Defaults.Rules.Actions = mergeActions(cfg.Defaults.Rules.Actions, defaults.Actions)
+}
+
+func mergeChecks(user, defaults []CheckConfig) []CheckConfig {
+	existing := make(map[string]bool, len(user))
+	for _, c := range user {
+		existing[c.Name] = true
+	}
+
+	for _, c := range defaults {
+		if !existing[c.Name] {
+			user = append(user, c)
+		}
+	}
+
+	return user
+}
+
+func mergeActions(user, defaults []ActionConfig) []ActionConfig {
+	existing := make(map[string]bool, len(user))
+	for _, a := range user {
+		existing[a.Name] = true
+	}
+
+	for _, a := range defaults {
+		if !existing[a.Name] {
+			user = append(user, a)
+		}
+	}
+
+	return user
 }
 
 // LoadDefaults loads the embedded default_config.yaml into a fresh Config.

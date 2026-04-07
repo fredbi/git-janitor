@@ -22,7 +22,9 @@ type RepoInfo struct {
 	DefaultBranch  string
 	SCM            RepoSCM  // github, gitlab, other, no-scm
 	Kind           RepoKind // clone, fork, not-git
-	LastCommit     time.Time
+	LastCommit        time.Time
+	LastCommitMessage string    // subject line of the most recent commit on HEAD
+	LastLocalUpdate   time.Time // most recent local activity: last commit if clean, newest dirty file mtime if dirty
 	Worktrees      []Worktree
 	IsShallow      bool
 	HasSubmodules  bool

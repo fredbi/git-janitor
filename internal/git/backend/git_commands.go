@@ -63,14 +63,31 @@ func cmdFetchRefspec(remote, refspec string) []string {
 
 // --- Stash ---
 
+func cmdStashSave(message string) []string {
+	if message != "" {
+		return []string{"stash", "push", "--include-untracked", "-m", message}
+	}
+
+	return []string{"stash", "push", "--include-untracked"}
+}
+
+func cmdStashPop() []string {
+	return []string{"stash", "pop"}
+}
+
 func cmdStashList() []string {
-	return []string{"stash", "list"}
+	// Use --format to get structured output: ref<TAB>ISO-date<TAB>subject
+	return []string{"stash", "list", "--format=%gd\t%aI\t%gs"}
 }
 
 // --- Log ---
 
 func cmdLastCommitDate() []string {
 	return []string{"log", "-1", "--format=%aI"}
+}
+
+func cmdLastCommitMessage() []string {
+	return []string{"log", "-1", "--format=%s"}
 }
 
 // --- Tags ---
@@ -162,6 +179,24 @@ func cmdGCAggressive() []string {
 	return []string{"gc", "--aggressive"}
 }
 
+// --- Staging & committing ---
+
+func cmdResetHead() []string {
+	return []string{"reset", "HEAD"}
+}
+
+func cmdAddAll() []string {
+	return []string{"add", "-A"}
+}
+
+func cmdCommit(message string) []string {
+	return []string{"commit", "-m", message}
+}
+
+func cmdCheckout(branch string) []string {
+	return []string{"checkout", branch}
+}
+
 // --- Worktree ---
 
 func cmdWorktreeList() []string {
@@ -170,6 +205,10 @@ func cmdWorktreeList() []string {
 
 func cmdWorktreeAdd(path, branch string) []string {
 	return []string{"worktree", "add", path, branch}
+}
+
+func cmdWorktreeAddNewBranch(path, newBranch, startPoint string) []string {
+	return []string{"worktree", "add", "-b", newBranch, path, startPoint}
 }
 
 func cmdWorktreeRemove(path string) []string {

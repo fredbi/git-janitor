@@ -21,5 +21,9 @@ func AllActions() iter.Seq[ifaces.Action] {
 		actions.NewRenameRemote(),
 		actions.NewPushTag(),
 		actions.NewFetchTags(),
+		actions.NewStashDirty(),
+		actions.NewCommitDirty(),
+		actions.NewCommitStash(),
+		actions.NewSwitchDefaultBranch(),
 	})
 }

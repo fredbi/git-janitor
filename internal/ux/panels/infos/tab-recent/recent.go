@@ -116,8 +116,15 @@ func (p *Panel) renderEntry(idx int) string {
 	// Build the main line.
 	line := fmt.Sprintf(" %s %s  %s  · %s", icon, name, subjects, timeStr)
 
-	// If the action had user-provided params, show them on a second line.
-	if len(e.Params) > 0 {
+	// Show command log when the entry is selected.
+	if selected && len(e.Result.CommandLog) > 0 {
+		cmdStyle := lipgloss.NewStyle().Foreground(t.Dim)
+
+		for _, cmd := range e.Result.CommandLog {
+			line += "\n     " + cmdStyle.Render("$ "+gadgets.ElideLongLabel(cmd))
+		}
+	} else if len(e.Params) > 0 {
+		// Fallback: show params if no command log.
 		paramStr := strings.Join(e.Params, ", ")
 		paramStr = gadgets.ElideLongLabel(paramStr)
 		paramLine := "     " + subjectStyle.Render("→ "+paramStr)

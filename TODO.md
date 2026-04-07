@@ -4,14 +4,14 @@
 
 ## help
 
-* ctrl-H: contextualized help for current tab
+* [x] ctrl-H: contextualized help for current tab
 
 # bugs
 
 * refresh cache after branches pushed?
 * [x] locked kv store
 * [x] diverged branches doesn't work (benchviz)
-* action github set-repo-description: wrong runner type
+* [x] action github set-repo-description: wrong runner type
 
 ## theming
 
@@ -21,36 +21,51 @@ other fields are a specialization for our panels
 
 ## stashes, dirty tree & inactive local
 
-* stashes: a standalone tab for stashes (the "stashes" section of the Facts tab is moved to its own panel)
-* new git clone info: last modified local
+* [x] new stash info: last updated in git time
+* [x] stashes: a standalone tab for stashes (the "stashes" section of the Facts tab is moved to its own panel)
+* [x] new git clone info: last modified local
 
-* git action on stash: stash to branch -> pop stash to worktree, commit, push branch upstream (user input options: branch name, commit msg)
-* new git action: for stashes older than 7 days, suggest move to commit & branch action
-* new git check: for locals inactive for 7 days with dirty tree, suggest to stash with untracked
-* new git check: for inactive locals with dirty tree older than 30 days, suggest same as for old stash: copy to worktree, branch out, commit, push upstream
-* local inactive repo with current branch != default branch : suggest switch to default branch
+* [x] git action on stash: stash to branch -> pop stash to worktree, commit, push branch upstream (user input options: branch name, commit msg)
+* [x] new git action: for stashes older than 30 days, suggest move to commit & branch action
+* [x] new git check: for locals inactive for 7 days with dirty tree, suggest to stash with untracked
+* [x] new git check: for inactive locals with dirty tree older than 30 days, suggest same as for old stash: copy to worktree, branch out, commit, push upstream
+* [x] local inactive repo with current branch != default branch : suggest switch to default branch
+
+Improvements:
+
+* [ ] UX: mini-form overlay in actions panel for per-subject parameter editing (branch name, commit message) before execution
+
+## history
+
+* [x] keep full record of git command
 
 ## branches
 
-* new branch info:
-  * last updated in git time 
+* [x] new branch info:
+  * [ ] last updated in git time 
   * last commit message
-* add time column to branches panel
+* [x] add time column to branches panel
 * add text zone at the top of the panel to hold the last commit message (elided) of the current select branch
 
-* branches tab:
+* [x] branches tab:
   * ordered by last updated in git time DESC
   * EXCEPTION: default branch always comes first, current branch second (if not default)
 
 ## github features
 
+* forks github: fix missing "delete head on merge" setup
 * issues
 * PRs
+* dependabot PRs / successful CI / pending >3 days: suggestion comment @dependabot rebase
 * workflow failures
 * forks: disable CI
+* gists
+* keys?
+* old & large CI artifacts
 
 ## ux
 
+* new interaction Ctrl-D for details (branches, stashes)
 * indicator if github is disabled/enabled
 * help to mention GH_TOKEN variable to enable gihub 
 * is there a context associated to bubble components or should we always assume background?
@@ -61,6 +76,18 @@ other fields are a specialization for our panels
 * use go-openapi/testify
 * use full SPDX headers everywhere
 * use mockery to generate mocks
+
+## other git fixes
+
+* git-exposed-credentials-remote: check the presence of a password/token in the remote url
+* forks: check already merged remote on upstream
+
+## AI features
+
+* check "material" stash or dirty
+ * delete / clean
+
+* new git action: delete stash
 
 ## config
 
@@ -134,6 +161,7 @@ This uses kvstore bucket "history"
 
 ## single all-alerts panel
 
+A panel that displays all alerts (by default not "info") on all repos
+
 * requires "refresh all"
-## history book-keeping
-## history book-keeping
+

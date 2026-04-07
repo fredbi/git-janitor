@@ -36,3 +36,13 @@ func (r *Runner) LastCommitTime(ctx context.Context) (time.Time, error) {
 
 	return time.Parse(time.RFC3339, strings.TrimSpace(out))
 }
+
+// LastCommitMessage returns the subject line of the most recent commit on HEAD.
+func (r *Runner) LastCommitMessage(ctx context.Context) string {
+	out, err := r.run(ctx, cmdLastCommitMessage()...)
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(out)
+}

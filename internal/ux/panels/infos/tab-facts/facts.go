@@ -145,7 +145,17 @@ func (p *Panel) buildLines() []string {
 
 	// Last commit.
 	if !info.LastCommit.IsZero() {
-		line("Last commit:", info.LastCommit.Format("2006-01-02 15:04"))
+		commitLine := info.LastCommit.Format("2006-01-02 15:04")
+		if info.LastCommitMessage != "" {
+			commitLine += "  " + dimStyle.Render(info.LastCommitMessage)
+		}
+
+		line("Last commit:", commitLine)
+	}
+
+	// Last local update (differs from last commit when worktree is dirty).
+	if !info.LastLocalUpdate.IsZero() && info.LastLocalUpdate != info.LastCommit {
+		line("Last update:", info.LastLocalUpdate.Format("2006-01-02 15:04")+" "+dimStyle.Render("(dirty files)"))
 	}
 
 	// Current branch.
@@ -220,26 +230,13 @@ func (p *Panel) buildLines() []string {
 		}
 	}
 
-	// Stashes.
+	// Stashes (count only — detail in the Stashes tab).
 	if len(info.Stashes) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, fmt.Sprintf("  %s  %s",
 			labelStyle.Render("Stashes:"),
 			valStyle.Render(strconv.Itoa(len(info.Stashes))),
 		))
-
-		for _, st := range info.Stashes {
-			msg := st.Message
-			if msg == "" {
-				msg = "(no message)"
-			}
-
-			lines = append(lines, fmt.Sprintf("    %s  %s  %s",
-				dimStyle.Render(st.Ref),
-				valStyle.Render(st.Branch),
-				dimStyle.Render(msg),
-			))
-		}
 	}
 
 	// GitHub section.

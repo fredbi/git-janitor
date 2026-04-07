@@ -78,6 +78,11 @@ type Result struct {
 
 	// Message describes what happened (success or failure).
 	Message string
+
+	// CommandLog records the commands (git CLI or API calls) executed
+	// during the action, in order. Each entry is a human-readable
+	// command string (e.g. "git stash apply stash@{3}").
+	CommandLog []string
 }
 
 // Assignment wraps an action suggestion for execution.

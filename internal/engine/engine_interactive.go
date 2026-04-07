@@ -119,29 +119,24 @@ func (e *Interactive) Execute(ctx context.Context, info *models.RepoInfo, sugges
 		return models.Result{}, err
 	}
 
-	// Build the parameter list for the action.
-	// Actions with ParamPrompt receive per-subject params; others receive subject names.
-	subjects := suggestion.SubjectNames()
-
-	var params []string
-	if action.ParamPrompt() != "" {
-		// Collect params from all subjects (e.g. user-typed description).
-		for _, sub := range suggestion.Subjects {
-			params = append(params, sub.Params...)
-		}
-	} else {
-		params = subjects
+	// When subjects carry per-subject params, execute once per subject
+	// so each gets its own params (e.g. separate WIP branches per stash).
+	// Otherwise, execute once with all subject names.
+	if hasPerSubjectParams(suggestion) {
+		return e.executePerSubject(ctx, info, action, suggestion)
 	}
 
-	result, err := action.Execute(ctx, info, params)
+	subjects := suggestion.SubjectNames()
+	result, err := action.Execute(ctx, info, subjects)
 
-	// Record in history regardless of success/failure.
+	// Attach command log from the runner, if available.
+	result.CommandLog = extractCommandLog(ctx)
+
 	e.appendHistory(models.HistoryEntry{
 		Timestamp:  time.Now(),
 		RepoPath:   info.Path,
 		ActionName: suggestion.ActionName,
 		Subjects:   subjects,
-		Params:     params,
 		Result:     result,
 	})
 
@@ -306,6 +301,7 @@ func (e *Interactive) withRunnerForAction(ctx context.Context, action ifaces.Act
 	switch action.Kind() {
 	case models.ActionKindGit:
 		runner := gitbackend.NewRunner(info.Path)
+		runner.StartLogging()
 
 		return ifaces.WithRunner(ctx, runner), nil
 
@@ -331,6 +327,88 @@ func (e *Interactive) checkEnabled(name string, enabledChecks []string) bool {
 	}
 
 	return slices.Contains(enabledChecks, name)
+}
+
+// extractCommandLog retrieves the command log from the runner in context, if available.
+func extractCommandLog(ctx context.Context) []string {
+	r, ok := ifaces.RunnerFromContext(ctx)
+	if !ok || r == nil {
+		return nil
+	}
+
+	if runner, ok := r.(*gitbackend.Runner); ok {
+		return runner.Commands()
+	}
+
+	return nil
+}
+
+// hasPerSubjectParams reports whether any subject in the suggestion carries params.
+func hasPerSubjectParams(suggestion models.ActionSuggestion) bool {
+	for _, sub := range suggestion.Subjects {
+		if len(sub.Params) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+// executePerSubject runs the action once per subject, each with its own params.
+// Subjects are processed in reverse order so that index-based references
+// (like stash@{N}) remain valid as earlier entries are removed.
+// Stops on first failure. Returns a combined result message on success.
+func (e *Interactive) executePerSubject(
+	ctx context.Context,
+	info *models.RepoInfo,
+	action ifaces.Action,
+	suggestion models.ActionSuggestion,
+) (models.Result, error) {
+	var messages []string
+
+	// Reverse order: process highest indices first so dropping stash@{5}
+	// doesn't shift stash@{3} before we process it.
+	for i := len(suggestion.Subjects) - 1; i >= 0; i-- {
+		sub := suggestion.Subjects[i]
+		// Build params: subject name prepended to per-subject params.
+		params := append([]string{sub.Subject}, sub.Params...)
+
+		// Snapshot log length to extract only this execution's commands.
+		logBefore := len(extractCommandLog(ctx))
+
+		result, err := action.Execute(ctx, info, params)
+
+		if fullLog := extractCommandLog(ctx); len(fullLog) > logBefore {
+			result.CommandLog = fullLog[logBefore:]
+		}
+
+		// Record each execution in history.
+		e.appendHistory(models.HistoryEntry{
+			Timestamp:  time.Now(),
+			RepoPath:   info.Path,
+			ActionName: suggestion.ActionName,
+			Subjects:   []string{sub.Subject},
+			Params:     sub.Params,
+			Result:     result,
+		})
+
+		if err != nil {
+			return result, err
+		}
+
+		if !result.OK {
+			return result, nil
+		}
+
+		messages = append(messages, result.Message)
+	}
+
+	combined := fmt.Sprintf("%d subject(s) processed", len(suggestion.Subjects))
+	if len(messages) > 0 {
+		combined = messages[len(messages)-1]
+	}
+
+	return models.Result{OK: true, Message: combined}, nil
 }
 
 // makeOptSet builds a fast lookup set from collect options.

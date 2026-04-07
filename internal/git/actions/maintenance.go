@@ -37,7 +37,7 @@ func (a RunGC) Execute(ctx context.Context, info *models.RepoInfo, subjects []st
 func (a RunGC) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, _ []string) (models.Result, error) {
 	result := r.Compact(ctx)
 
-	return models.Result(result), nil
+	return result.ToResult(), nil
 }
 
 // RunGCAggressive runs git gc --aggressive (deep repack).
@@ -71,5 +71,5 @@ func (a RunGCAggressive) Execute(ctx context.Context, info *models.RepoInfo, sub
 func (a RunGCAggressive) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, _ []string) (models.Result, error) {
 	result := r.CompactAggressive(ctx)
 
-	return models.Result(result), nil
+	return result.ToResult(), nil
 }

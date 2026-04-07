@@ -239,7 +239,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case key.CtrlH:
-		m.Help.Toggle()
+		if m.Help.Visible {
+			m.Help.Hide()
+		} else {
+			m.Help.ShowContextual(m.helpContext())
+		}
 
 		return m, nil
 
@@ -448,6 +452,34 @@ func (m *Model) applyFocus() tea.Cmd {
 
 		return nil
 	}
+}
+
+// helpContext returns the context key for contextual help based on the
+// currently focused pane and active tab.
+func (m *Model) helpContext() string {
+	switch m.Focused {
+	case paneRepos:
+		return "repos"
+	case paneInput:
+		return "input"
+	case paneRight:
+		switch m.Right.Active {
+		case infos.TabFacts:
+			return "facts"
+		case infos.TabBranches:
+			return "branches"
+		case infos.TabStashes:
+			return "stashes"
+		case infos.TabAlerts:
+			return "alerts"
+		case infos.TabActions:
+			return "actions"
+		case infos.TabRecent:
+			return "recent"
+		}
+	}
+
+	return ""
 }
 
 // updateFocused forwards a message to the currently focused Pane.

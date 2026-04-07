@@ -21,7 +21,7 @@ Navigation
   Esc / q            Close popup, clear filter, or leave command input
   Ctrl+C / Ctrl+Q    Quit
   Ctrl+R             Fetch (git fetch --all --tags) and refresh selected repo
-  Ctrl+H             Open this help popup
+  Ctrl+H             Contextual help for the focused panel/tab
 
 Mouse
 ─────
@@ -46,10 +46,11 @@ Right pane Tabs
 ───────────────
   Ctrl+A / ← / →    Cycle through tabs (when right pane is focused)
 
-  The right pane has five Tabs:
+  The right pane has six tabs:
   • Facts     — quick recap: path, kind, SCM, last commit, branch,
-                upstream, working tree status, remotes, stashes
+                upstream, working tree status, remotes, stash count
   • Branches  — scrollable list of local and remote branches
+  • Stashes   — scrollable list of stash entries (most recent first)
   • Alerts    — notifications about the selected repository
   • Actions   — available cleanup operations
   • Recent    — log of recently performed actions
@@ -59,7 +60,7 @@ Right pane Tabs
 
 Commands (type in the input bar)
 ────────
-  /help              Show this help popup
+  /help              Show this general help
   /config            Open the configuration wizard
   /scan              Scan all configured roots for repositories
   /theme             Cycle to the next color theme
@@ -103,8 +104,170 @@ Configuration Wizard
   Config file: ~/.config/git-janitor/config.yaml
 
 ────────────────────
-Press Esc or Ctrl+H to close this help.
+Press Esc to close this help.
 `
+
+// Contextual help texts keyed by context name.
+var contextHelp = map[string]string{ //nolint:gochecknoglobals // help text table
+	"repos": `Repositories Panel
+══════════════════
+
+  Root Tabs:
+    Ctrl+A / ← / →    Cycle through root tabs
+    Left-click tab     Switch to the clicked root tab
+
+  Filter:
+    Type text to filter repos (RE2 regexp, case-insensitive).
+    Esc                Clear filter
+
+  Navigation:
+    j / k  or  ↑ / ↓  Navigate the repo list
+    g / G              Jump to top / bottom
+    PgUp / PgDn        Page up / page down
+
+────────────────────
+Press Esc or Ctrl+H to close.  /help for general help.
+`,
+
+	"facts": `Facts Tab
+═════════
+
+  Displays a quick recap of the selected repository:
+  path, kind, SCM, last commit, branch, upstream,
+  working tree status, remotes, stashes.
+
+  Navigation:
+    j / k  or  ↑ / ↓  Scroll content
+    g / G              Jump to top / bottom
+    PgUp / PgDn        Page up / page down
+
+  Auto-refreshes after Ctrl+R (fetch).
+
+────────────────────
+Press Esc or Ctrl+H to close.  /help for general help.
+`,
+
+	"branches": `Branches Tab
+════════════
+
+  Scrollable list of local and remote branches.
+
+  Columns: Branch name, Hash, Last updated, Upstream
+
+  Ordering:
+    Local branches first:
+      • Default branch always first
+      • Current branch second (if not default)
+      • Other locals by most recent commit
+    Remote branches after:
+      • origin first, upstream second, others alphabetically
+      • Within same remote, by most recent commit
+
+  Navigation:
+    j / k  or  ↑ / ↓  Navigate branch list
+    g / G              Jump to top / bottom
+    PgUp / PgDn        Page up / page down
+
+  Auto-refreshes after Ctrl+R (fetch).
+
+────────────────────
+Press Esc or Ctrl+H to close.  /help for general help.
+`,
+
+	"stashes": `Stashes Tab
+═══════════
+
+  Scrollable list of stash entries, most recent first.
+  Each entry shows ref, branch, message, and age.
+
+  Navigation:
+    j / k  or  ↑ / ↓  Navigate stash list
+    g / G              Jump to top / bottom
+    PgUp / PgDn        Page up / page down
+
+────────────────────
+Press Esc or Ctrl+H to close.  /help for general help.
+`,
+
+	"alerts": `Alerts Tab
+══════════
+
+  Notifications about the selected repository,
+  sorted by severity (highest first).
+
+  Navigation:
+    j / k  or  ↑ / ↓  Navigate alert list
+    g / G              Jump to top / bottom
+    PgUp / PgDn        Page up / page down
+
+  Actions:
+    Enter              Show suggested fix actions
+    C                  Copy alert URL to clipboard
+
+────────────────────
+Press Esc or Ctrl+H to close.  /help for general help.
+`,
+
+	"actions": `Actions Tab
+═══════════
+
+  Suggested cleanup operations for the selected alert.
+
+  Navigation:
+    j / k  or  ↑ / ↓  Navigate suggestions
+    PgUp / PgDn        Page up / page down
+
+  Execute:
+    Enter              Execute action on all subjects
+                       (prompts for input if action needs a parameter)
+    Ctrl+P             Open subject picker (multi-subject actions)
+
+  Subject Picker (when active):
+    Space              Toggle subject checkbox
+    A                  Select all
+    N                  Deselect all
+    Enter              Execute with selected subjects
+    Esc                Cancel picker
+
+────────────────────
+Press Esc or Ctrl+H to close.  /help for general help.
+`,
+
+	"recent": `Recent Tab
+══════════
+
+  Log of actions performed on the selected repository
+  (last 30 days). Persisted across restarts.
+
+  Navigation:
+    j / k  or  ↑ / ↓  Navigate history
+    g / G              Jump to top / bottom
+    PgUp / PgDn        Page up / page down
+
+────────────────────
+Press Esc or Ctrl+H to close.  /help for general help.
+`,
+
+	"input": `Command Input
+═════════════
+
+  Type commands starting with "/":
+
+    /help              Show general help
+    /config            Open the configuration wizard
+    /scan              Scan all configured roots for repositories
+    /theme             Cycle to the next color theme
+    /theme <name>      Switch to a specific theme
+    /themes            List available theme names
+    /clear             Clear the status bar message
+    /quit              Quit the application
+
+  Esc                  Leave input bar
+
+────────────────────
+Press Esc or Ctrl+H to close.  /help for general help.
+`,
+}
 
 // Popup is a scrollable overlay that displays help text.
 type Popup struct {
@@ -149,8 +312,22 @@ func (h *Popup) Toggle() {
 	}
 }
 
-// Show makes the help popup visible.
+// Show makes the help popup visible with the general help text.
 func (h *Popup) Show() {
+	h.Viewport.SetContent(helpText)
+	h.Visible = true
+	h.Viewport.GotoTop()
+}
+
+// ShowContextual makes the help popup visible with context-specific help.
+// Falls back to general help if no contextual help is defined for the given context.
+func (h *Popup) ShowContextual(context string) {
+	text, ok := contextHelp[context]
+	if !ok {
+		text = helpText
+	}
+
+	h.Viewport.SetContent(text)
 	h.Visible = true
 	h.Viewport.GotoTop()
 }

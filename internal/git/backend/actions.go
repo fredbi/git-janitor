@@ -321,6 +321,192 @@ func (r *Runner) MergeIntoRemote(ctx context.Context, source string, target mode
 	})
 }
 
+// StashDirty unstages any staged changes, then stashes all uncommitted work
+// (including untracked files) with an optional message.
+func (r *Runner) StashDirty(ctx context.Context, message string) models.ActionResult {
+	// Unstage any staged changes first so the stash captures everything.
+	_, _ = r.run(ctx, cmdResetHead()...) // non-fatal: reset may fail if no HEAD
+
+	_, err := r.run(ctx, cmdStashSave(message)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("stash failed: %v", err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "stashed uncommitted work"}
+}
+
+// CheckoutBranch switches to the given branch. Requires a clean worktree.
+func (r *Runner) CheckoutBranch(ctx context.Context, branch string) models.ActionResult {
+	if result := r.guardClean(ctx); result != nil {
+		return *result
+	}
+
+	_, err := r.run(ctx, cmdCheckout(branch)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("checkout %s failed: %v", branch, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "switched to " + branch}
+}
+
+// CommitDirtyToNewBranch stashes dirty work, creates a new worktree+branch,
+// pops the stash there, commits, pushes upstream, and cleans up.
+// The main worktree is restored to a clean state on the original branch.
+func (r *Runner) CommitDirtyToNewBranch(ctx context.Context, newBranch, startPoint, remote, message string) models.ActionResult {
+	// 1. Unstage + stash everything.
+	_, _ = r.run(ctx, cmdResetHead()...) // non-fatal
+
+	_, err := r.run(ctx, cmdStashSave("")...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("stash dirty work failed: %v", err)}
+	}
+
+	// 2. Create temporary worktree with new branch.
+	result := r.inNewBranchWorktree(ctx, newBranch, startPoint, func(wt *Runner) models.ActionResult {
+		// 3. Apply the stash in the worktree (conflicts resolved by staging all).
+		wt.run(ctx, cmdStashPop()...) //nolint:errcheck // conflicts are resolved below
+
+		// 4. Stage everything + commit.
+		_, _ = wt.run(ctx, cmdAddAll()...)
+
+		_, commitErr := wt.run(ctx, cmdCommit(message)...)
+		if commitErr != nil {
+			return models.ActionResult{Message: fmt.Sprintf("commit in worktree failed: %v", commitErr)}
+		}
+
+		// 5. Push upstream.
+		_, pushErr := wt.run(ctx, cmdPushBranchUpstream(remote, newBranch)...)
+		if pushErr != nil {
+			return models.ActionResult{
+				OK:      true,
+				Message: fmt.Sprintf("committed to %s but push failed: %v (branch exists locally)", newBranch, pushErr),
+			}
+		}
+
+		return models.ActionResult{OK: true, Message: fmt.Sprintf("committed dirty work to %s and pushed to %s", newBranch, remote)}
+	})
+
+	return result
+}
+
+// CommitStashToNewBranch creates a new worktree+branch, applies the given stash
+// ref there, commits, pushes upstream, and cleans up. The stash is dropped on success.
+//
+// The worktree is created from the stash's parent commit (the commit the stash
+// was created on top of), so the stash applies cleanly without conflicts.
+func (r *Runner) CommitStashToNewBranch(ctx context.Context, stashRef, newBranch, _, remote, message string) models.ActionResult {
+	// Resolve the stash's parent commit — the commit it was created on.
+	baseCommit, err := r.run(ctx, "rev-parse", stashRef+"^1")
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("cannot resolve base commit for %s: %v", stashRef, err)}
+	}
+
+	startPoint := strings.TrimSpace(baseCommit)
+
+	return r.inNewBranchWorktree(ctx, newBranch, startPoint, func(wt *Runner) models.ActionResult {
+		// Apply the stash. Since we branched from its parent commit, this should apply cleanly.
+		_, applyErr := wt.run(ctx, "stash", "apply", stashRef)
+		if applyErr != nil {
+			// Fallback: stage everything as-is even with conflicts (archive, not merge).
+			wt.run(ctx, "checkout", "--theirs", ".") //nolint:errcheck // best-effort conflict resolution
+		}
+
+		// Stage everything (including conflict markers) + commit.
+		_, _ = wt.run(ctx, cmdAddAll()...)
+
+		_, commitErr := wt.run(ctx, cmdCommit(message)...)
+		if commitErr != nil {
+			return models.ActionResult{Message: fmt.Sprintf("commit in worktree failed: %v", commitErr)}
+		}
+
+		// Push upstream.
+		_, pushErr := wt.run(ctx, cmdPushBranchUpstream(remote, newBranch)...)
+		if pushErr != nil {
+			// Committed locally but push failed — still useful.
+			return models.ActionResult{
+				OK:      true,
+				Message: fmt.Sprintf("committed stash to %s but push failed: %v (branch exists locally)", newBranch, pushErr),
+			}
+		}
+
+		// Drop the stash now that it's safely committed and pushed.
+		r.run(ctx, "stash", "drop", stashRef) //nolint:errcheck // best-effort: stash index may have shifted
+
+		return models.ActionResult{OK: true, Message: fmt.Sprintf("committed stash to %s and pushed to %s", newBranch, remote)}
+	})
+}
+
+// GenerateWIPBranch creates a unique wip/YYYY-MM-DD-auto-save-work-NNNN branch name.
+// It checks existing branches to avoid collisions.
+func (r *Runner) GenerateWIPBranch(ctx context.Context) string {
+	prefix := fmt.Sprintf("wip/%s-auto-save-work", time.Now().Format("2006-01-02"))
+
+	// Find existing wip branches to determine the next number.
+	out, err := r.run(ctx, "branch", "--list", prefix+"-*", "--format=%(refname:short)")
+	if err != nil {
+		return prefix + "-0001"
+	}
+
+	maxNum := 0
+
+	for line := range strings.SplitSeq(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Extract the trailing number.
+		idx := strings.LastIndex(line, "-")
+		if idx < 0 {
+			continue
+		}
+
+		var num int
+		if _, err := fmt.Sscanf(line[idx+1:], "%d", &num); err == nil && num > maxNum {
+			maxNum = num
+		}
+	}
+
+	return fmt.Sprintf("%s-%04d", prefix, maxNum+1)
+}
+
+// inNewBranchWorktree creates a temporary worktree with a new branch,
+// runs the function, and cleans up. The worktree is removed afterwards
+// but the branch is kept.
+func (r *Runner) inNewBranchWorktree(ctx context.Context, newBranch, startPoint string, fn func(wt *Runner) models.ActionResult) models.ActionResult {
+	tmpDir, err := os.MkdirTemp("", "janitor-wt-*")
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("cannot create temp directory: %v", err)}
+	}
+
+	wtPath := filepath.Join(tmpDir, newBranch)
+
+	defer func() {
+		r.run(ctx, cmdWorktreeRemove(wtPath)...) //nolint:errcheck // best-effort
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	_, err = r.run(ctx, cmdWorktreeAddNewBranch(wtPath, newBranch, startPoint)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("worktree add -b %s failed: %v", newBranch, err)}
+	}
+
+	wt := NewRunner(wtPath)
+	wt.Timeout = r.Timeout
+
+	// Share the command log with the worktree runner.
+	if r.logging {
+		wt.logging = true
+	}
+
+	result := fn(wt)
+
+	// Merge worktree command log back.
+	r.CmdLog = append(r.CmdLog, wt.CmdLog...)
+
+	return result
+}
+
 // inWorktree creates a temporary worktree for the given branch, runs the
 // provided function with a Runner pointing to the worktree, and cleans up.
 // The main worktree is never touched.
@@ -345,7 +531,14 @@ func (r *Runner) inWorktree(ctx context.Context, branch string, fn func(wt *Runn
 	wt := NewRunner(wtPath)
 	wt.Timeout = r.Timeout
 
-	return fn(wt)
+	if r.logging {
+		wt.logging = true
+	}
+
+	result := fn(wt)
+	r.CmdLog = append(r.CmdLog, wt.CmdLog...)
+
+	return result
 }
 
 // guardClean checks that the worktree is clean. Returns nil if clean,
