@@ -113,8 +113,16 @@ func (p *Panel) renderEntry(idx int) string {
 	timeStyle := lipgloss.NewStyle().Foreground(t.Dim)
 	timeStr := timeStyle.Render(gadgets.TimeAgo(e.Timestamp))
 
-	// Build the line.
+	// Build the main line.
 	line := fmt.Sprintf(" %s %s  %s  · %s", icon, name, subjects, timeStr)
+
+	// If the action had user-provided params, show them on a second line.
+	if len(e.Params) > 0 {
+		paramStr := strings.Join(e.Params, ", ")
+		paramStr = gadgets.ElideLongLabel(paramStr)
+		paramLine := "     " + subjectStyle.Render("→ "+paramStr)
+		line += "\n" + paramLine
+	}
 
 	if selected {
 		line = lipgloss.NewStyle().

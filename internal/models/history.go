@@ -10,5 +10,6 @@ type HistoryEntry struct {
 	RepoPath   string
 	ActionName string
 	Subjects   []string
+	Params     []string // user-provided input parameters (e.g. description text)
 	Result     Result
 }

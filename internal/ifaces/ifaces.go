@@ -70,6 +70,12 @@ type Action interface {
 	Kind() models.ActionKind
 	ApplyTo() models.SubjectKind // what kind of subject this action operates on
 	Destructive() bool           // needs user confirmation
+
+	// ParamPrompt returns a user-facing prompt for an input parameter
+	// required by this action (e.g. "Description:"). An empty string
+	// means no input is needed — the action can execute immediately.
+	ParamPrompt() string
+
 	Execute(ctx context.Context, info *models.RepoInfo, params []string) (models.Result, error)
 }
 

@@ -18,9 +18,10 @@ type githubAction struct {
 }
 
 func (githubAction) IsAction()                   {}
-func (githubAction) Kind() models.ActionKind     { return models.ActionKindGit }
+func (githubAction) Kind() models.ActionKind     { return models.ActionKindGitHub }
 func (githubAction) Destructive() bool           { return false }
 func (githubAction) ApplyTo() models.SubjectKind { return models.SubjectNone }
+func (githubAction) ParamPrompt() string         { return "" }
 
 // Execute is the default implementation that returns "not implemented".
 // Concrete actions override this method.

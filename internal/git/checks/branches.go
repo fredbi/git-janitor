@@ -227,7 +227,13 @@ func (c BranchDiverged) Evaluate(_ context.Context, info *models.RepoInfo) (iter
 
 func (c BranchDiverged) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	allDiverged := filterBranches(info, func(b models.Branch) bool {
-		if b.IsRemote || b.Merged || b.Ahead == 0 || b.Behind == 0 {
+		if b.IsRemote || b.Ahead == 0 || b.Behind == 0 {
+			return false
+		}
+
+		// Skip merged feature branches, but always check the default branch —
+		// it can diverge from upstream even though it's "merged into itself".
+		if b.Merged && b.Name != info.DefaultBranch {
 			return false
 		}
 
@@ -239,7 +245,11 @@ func (c BranchDiverged) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert],
 	}
 
 	rebasable := filterBranches(info, func(b models.Branch) bool {
-		if b.IsRemote || b.Merged || b.Ahead == 0 || b.Behind == 0 {
+		if b.IsRemote || b.Ahead == 0 || b.Behind == 0 {
+			return false
+		}
+
+		if b.Merged && b.Name != info.DefaultBranch {
 			return false
 		}
 

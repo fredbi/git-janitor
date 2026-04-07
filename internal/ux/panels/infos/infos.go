@@ -194,6 +194,11 @@ func (p *Panel) ActiveTabName() string {
 	return ""
 }
 
+// IsCapturingInput reports whether a sub-panel has an active text input.
+func (p *Panel) IsCapturingInput() bool {
+	return p.Active == TabActions && p.Actions.IsCapturingInput()
+}
+
 // SetSize updates the panel dimensions and propagates to sub-panels.
 func (p *Panel) SetSize(w, h int) {
 	p.Width = w

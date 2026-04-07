@@ -31,6 +31,7 @@ func NewSetRepoDescription() SetRepoDescription {
 }
 
 func (SetRepoDescription) ApplyTo() models.SubjectKind { return models.SubjectRepo }
+func (SetRepoDescription) ParamPrompt() string         { return "Description:" }
 
 func (a SetRepoDescription) Execute(ctx context.Context, repoInfo *models.RepoInfo, subjects []string) (models.Result, error) {
 	if repoInfo.Platform == nil {

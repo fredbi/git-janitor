@@ -40,9 +40,16 @@ func main() {
 		return
 	}
 
-	// Open persistent store for caching and history (non-fatal on error).
+	// Open persistent store for caching and history.
+	// A lock error means another instance is running — exit immediately.
 	kvStore, err := bolt.OpenDefault()
 	if err != nil {
+		if errors.Is(err, bolt.ErrLocked) {
+			fatal(err)
+
+			return
+		}
+
 		fmt.Fprintf(os.Stderr, "%s: store disabled: %v\n", app, err)
 	}
 

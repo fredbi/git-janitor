@@ -216,6 +216,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	kb := key.MsgBinding(msg)
 
+	// When the right panel has an active text input (e.g. param prompt),
+	// forward all keys directly except quit — the input needs to capture
+	// letters, arrows, etc. that would otherwise trigger panel navigation.
+	if m.Focused == paneRight && m.Right.IsCapturingInput() {
+		if kb == key.CtrlC || kb == key.CtrlQ {
+			m.Quitting = true
+
+			return m, tea.Quit
+		}
+
+		cmd := m.Right.Update(msg)
+
+		return m, cmd
+	}
+
 	// Global keys that work regardless of focus.
 	switch kb {
 	case key.CtrlC, key.CtrlQ:
@@ -692,7 +707,15 @@ func (m *Model) handleActionResult(msg uxtypes.ActionResultMsg) (tea.Model, tea.
 
 	// Re-collect repo info (full, not fast) to reflect changes and re-evaluate alerts.
 	if msg.RepoPath == m.SelectedRepo {
-		return m, m.fullRepoCheck(msg.RepoPath)
+		cmds := []tea.Cmd{m.fullRepoCheck(msg.RepoPath)}
+
+		// After a GitHub action, force-refresh platform data so alerts
+		// reflect the updated state (e.g. description just set).
+		if m.LastRepoInfo != nil && m.LastRepoInfo.Platform != nil {
+			cmds = append(cmds, m.triggerGitHubFetch(m.LastRepoInfo, true))
+		}
+
+		return m, tea.Batch(cmds...)
 	}
 
 	return m, nil

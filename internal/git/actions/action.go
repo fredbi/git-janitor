@@ -21,6 +21,7 @@ func (gitAction) IsAction()                   {}
 func (gitAction) Kind() models.ActionKind     { return models.ActionKindGit }
 func (gitAction) Destructive() bool           { return false }
 func (gitAction) ApplyTo() models.SubjectKind { return models.SubjectNone }
+func (gitAction) ParamPrompt() string         { return "" }
 
 // Execute is the default implementation that returns "not implemented".
 // Concrete actions override this method.

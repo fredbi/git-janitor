@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/ifaces"
@@ -29,7 +30,16 @@ type Panel struct {
 
 	// Picker state (non-nil when Ctrl+P is active).
 	Picker *SubjectPicker
-	Engine ifaces.Engineer
+	// ParamInput state (non-nil when an action requires user input).
+	ParamInput *ParamInputState
+	Engine     ifaces.Engineer
+}
+
+// ParamInputState holds the text input state for actions that need a parameter.
+type ParamInputState struct {
+	Suggestion models.ActionSuggestion
+	Prompt     string
+	Input      textinput.Model
 }
 
 // SubjectPicker is an overlay for selecting individual subjects.
@@ -66,11 +76,18 @@ func (p *Panel) SetAlert(repoPath string, alert *models.Alert) {
 	p.ResetScroll()
 }
 
+// IsCapturingInput reports whether the panel has an active text input
+// that should capture all key events (preventing parent key bindings).
+func (p *Panel) IsCapturingInput() bool {
+	return p.ParamInput != nil
+}
+
 // Clear removes all suggestions.
 func (p *Panel) Clear() {
 	p.Alert = nil
 	p.Suggestions = nil
 	p.Picker = nil
+	p.ParamInput = nil
 	p.ResetScroll()
 }
 
@@ -79,6 +96,11 @@ func (p *Panel) SetSize(w, h int) {
 }
 
 func (p *Panel) Update(msg tea.Msg) tea.Cmd {
+	// When the param input is active, it captures all messages.
+	if p.ParamInput != nil {
+		return p.updateParamInput(msg)
+	}
+
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return nil
@@ -104,6 +126,11 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 		// Execute on ALL subjects.
 		if p.Cursor >= 0 && p.Cursor < len(p.Suggestions) {
 			sug := p.Suggestions[p.Cursor]
+
+			// If the action needs a parameter, show the input overlay.
+			if cmd := p.maybeShowParamInput(sug); cmd != nil {
+				return cmd
+			}
 
 			return func() tea.Msg {
 				return types.ExecuteActionMsg{
@@ -135,6 +162,11 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (p *Panel) View() string {
+	// If param input is active, render it instead of the card list.
+	if p.ParamInput != nil {
+		return p.viewParamInput()
+	}
+
 	// If picker is active, render it instead of the card list.
 	if p.Picker != nil {
 		return p.viewPicker()
@@ -378,4 +410,101 @@ func (p *Panel) viewCards() string {
 	hint = detailStyle.Render(hint)
 
 	return header + "\n" + strings.Join(rows, "\n") + "\n" + hint
+}
+
+// maybeShowParamInput checks if the action needs a parameter input.
+// Returns a focus command if input is shown, nil otherwise.
+func (p *Panel) maybeShowParamInput(sug models.ActionSuggestion) tea.Cmd {
+	action, ok := p.Engine.GetAction(sug.ActionName)
+	if !ok {
+		return nil
+	}
+
+	prompt := action.ParamPrompt()
+	if prompt == "" {
+		return nil
+	}
+
+	ti := textinput.New()
+	ti.Placeholder = "type here..."
+	ti.Prompt = " " + prompt + " "
+	ti.CharLimit = 256 //nolint:mnd // reasonable max for a description
+	ti.Width = max(p.Width-len(prompt)-6, 20) //nolint:mnd // account for prompt + padding
+
+	p.ParamInput = &ParamInputState{
+		Suggestion: sug,
+		Prompt:     prompt,
+		Input:      ti,
+	}
+
+	return p.ParamInput.Input.Focus()
+}
+
+// updateParamInput handles messages while the param input is active.
+func (p *Panel) updateParamInput(msg tea.Msg) tea.Cmd {
+	pi := p.ParamInput
+
+	if km, ok := msg.(tea.KeyMsg); ok {
+		switch key.MsgBinding(km) {
+		case key.Enter:
+			value := strings.TrimSpace(pi.Input.Value())
+			p.ParamInput = nil
+
+			if value == "" {
+				return nil // empty input, cancel
+			}
+
+			// Inject the user input as a param on the first subject.
+			subjects := make([]models.ActionSubject, len(pi.Suggestion.Subjects))
+			copy(subjects, pi.Suggestion.Subjects)
+
+			if len(subjects) > 0 {
+				subjects[0].Params = []string{value}
+			} else {
+				subjects = []models.ActionSubject{{
+					Subject: value,
+					Params:  []string{value},
+				}}
+			}
+
+			return func() tea.Msg {
+				return types.ExecuteActionMsg{
+					RepoPath:   p.RepoPath,
+					ActionName: pi.Suggestion.ActionName,
+					Subjects:   subjects,
+				}
+			}
+
+		case key.Esc:
+			p.ParamInput = nil
+
+			return nil
+		}
+	}
+
+	var cmd tea.Cmd
+	pi.Input, cmd = pi.Input.Update(msg)
+
+	return cmd
+}
+
+// viewParamInput renders the parameter input overlay.
+func (p *Panel) viewParamInput() string {
+	pi := p.ParamInput
+	t := p.Theme
+
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(t.HeaderText)
+	detailStyle := lipgloss.NewStyle().Foreground(t.Dim)
+	accentStyle := lipgloss.NewStyle().Bold(true).Foreground(t.ActionsAccent)
+
+	header := headerStyle.Render("  " + accentStyle.Render(pi.Suggestion.ActionName))
+
+	inputView := pi.Input.View()
+
+	hint := detailStyle.Render("  Enter: submit  |  Esc: cancel")
+
+	content := header + "\n\n" + inputView + "\n\n" + hint
+	padding := max(p.Height-5, 0) //nolint:mnd // header + blank + input + blank + hint
+
+	return content + strings.Repeat("\n", padding)
 }

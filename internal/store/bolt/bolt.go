@@ -5,19 +5,28 @@
 package bolt
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/fredbi/git-janitor/internal/config"
 	"github.com/fredbi/git-janitor/internal/store"
 	bolt "go.etcd.io/bbolt"
+	bolterrors "go.etcd.io/bbolt/errors"
 )
 
-const dbFile = "janitor.db"
+const (
+	dbFile     = "janitor.db"
+	dbFileMode = 0o600
+	lockTimeout = 1 * time.Second
+)
+
+// ErrLocked is returned when the database file is already locked by
+// another process (typically another git-janitor instance).
+var ErrLocked = errors.New("database is locked — is another git-janitor instance running?")
 
 var _ store.Store = (*Store)(nil)
-
-const dbFileMode = 0o600
 
 // Store is a [store.Store] backed by a bbolt database file.
 type Store struct {
@@ -40,9 +49,17 @@ func OpenDefault() (*Store, error) {
 
 // New opens (or creates) a bbolt database at the given path and
 // ensures all required buckets exist.
+//
+// If the database is already locked by another process, New returns
+// [ErrLocked] after a short timeout rather than blocking indefinitely.
 func New(path string) (*Store, error) {
-	db, err := bolt.Open(path, dbFileMode, nil)
+	db, err := bolt.Open(path, dbFileMode, &bolt.Options{Timeout: lockTimeout})
 	if err != nil {
+		// bbolt returns a generic "timeout" error when the file lock cannot be acquired.
+		if errors.Is(err, bolterrors.ErrTimeout) {
+			return nil, fmt.Errorf("%w: %s", ErrLocked, path)
+		}
+
 		return nil, fmt.Errorf("bolt: opening database %s: %w", path, err)
 	}
 

@@ -9,7 +9,8 @@
 # bugs
 
 * refresh cache after branches pushed?
-* diverged branches doesn't work (benchviz)
+* [x] locked kv store
+* [x] diverged branches doesn't work (benchviz)
 * action github set-repo-description: wrong runner type
 
 ## theming
@@ -53,6 +54,7 @@ other fields are a specialization for our panels
 * indicator if github is disabled/enabled
 * help to mention GH_TOKEN variable to enable gihub 
 * is there a context associated to bubble components or should we always assume background?
+* self-update
 
 ## quality
 

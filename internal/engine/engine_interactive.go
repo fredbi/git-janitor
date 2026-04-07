@@ -119,8 +119,21 @@ func (e *Interactive) Execute(ctx context.Context, info *models.RepoInfo, sugges
 		return models.Result{}, err
 	}
 
+	// Build the parameter list for the action.
+	// Actions with ParamPrompt receive per-subject params; others receive subject names.
 	subjects := suggestion.SubjectNames()
-	result, err := action.Execute(ctx, info, subjects)
+
+	var params []string
+	if action.ParamPrompt() != "" {
+		// Collect params from all subjects (e.g. user-typed description).
+		for _, sub := range suggestion.Subjects {
+			params = append(params, sub.Params...)
+		}
+	} else {
+		params = subjects
+	}
+
+	result, err := action.Execute(ctx, info, params)
 
 	// Record in history regardless of success/failure.
 	e.appendHistory(models.HistoryEntry{
@@ -128,6 +141,7 @@ func (e *Interactive) Execute(ctx context.Context, info *models.RepoInfo, sugges
 		RepoPath:   info.Path,
 		ActionName: suggestion.ActionName,
 		Subjects:   subjects,
+		Params:     params,
 		Result:     result,
 	})
 
