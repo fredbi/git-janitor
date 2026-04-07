@@ -1,7 +1,8 @@
-* update "Facts": add progress bar (for github?)
+# misc 
+
+* ~update "Facts": add progress bar (for github?)~
 * ~refresh repo: add progress bar~
 * ~go-fred-mcp go bulk-rename tool~
-
 
 # bugs
 
@@ -11,6 +12,7 @@
 * [x] action github set-repo-description: wrong runner type
 * ux glitch: left panel changes height depending on the tab displayed on the right (+1/-1 line)
 * delete-branch: branch can be deleted but this is the current branch -> should first switch to the default branch, then delete
+* issues/PR/workflows: ...more... indicator not 100% accurate, esp. when data is cached
 
 ## theming
 
@@ -27,7 +29,6 @@ other fields are a specialization for our panels
 * [x] new stash info: last updated in git time
 * [x] stashes: a standalone tab for stashes (the "stashes" section of the Facts tab is moved to its own panel)
 * [x] new git clone info: last modified local
-
 * [x] git action on stash: stash to branch -> pop stash to worktree, commit, push branch upstream (user input options: branch name, commit msg)
 * [x] new git action: for stashes older than 30 days, suggest move to commit & branch action
 * [x] new git check: for locals inactive for 7 days with dirty tree, suggest to stash with untracked
