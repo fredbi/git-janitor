@@ -42,14 +42,17 @@ Improvements:
 ## branches
 
 * [x] new branch info:
-  * [ ] last updated in git time 
-  * last commit message
+  * [x] last updated in git time 
+  * [x] last commit message
+  * [x] git diff --stat
+* [x] new stash details: git stash --show --include-untracked
+* [x] add text zone at the top of the details to hold the last commit message (elided) of the current select branch
 * [x] add time column to branches panel
-* add text zone at the top of the panel to hold the last commit message (elided) of the current select branch
 
 * [x] branches tab:
   * ordered by last updated in git time DESC
   * EXCEPTION: default branch always comes first, current branch second (if not default)
+* fork: rebase/merge/delete on remote branches
 
 ## github features
 
@@ -62,20 +65,26 @@ Improvements:
 * gists
 * keys?
 * old & large CI artifacts
+* branch protection rules
 
 ## ux
 
-* new interaction Ctrl-D for details (branches, stashes)
+* [x] new interaction for details (branches, stashes) (Enter)
 * indicator if github is disabled/enabled
 * help to mention GH_TOKEN variable to enable gihub 
 * is there a context associated to bubble components or should we always assume background?
 * self-update
+
+* new ux interactions in the details panel:
+  * D : delete stash / branch
+  * R : rebase
 
 ## quality
 
 * use go-openapi/testify
 * use full SPDX headers everywhere
 * use mockery to generate mocks
+* CI & release (w/ goreleaser & binary artifacts)
 
 ## other git fixes
 
@@ -86,7 +95,6 @@ Improvements:
 
 * check "material" stash or dirty
  * delete / clean
-
 * new git action: delete stash
 
 ## config
@@ -157,7 +165,7 @@ github client internal rate limiting is for the moment orthogonal to this mechan
 
 ## history book-keeping
 
-This uses kvstore bucket "history"
+[x] This uses kvstore bucket "history"
 
 ## single all-alerts panel
 

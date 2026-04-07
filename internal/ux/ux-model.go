@@ -45,6 +45,7 @@ type Model struct {
 	Input  commands.Input
 	Status statusbar.StatusBar
 	Help   help.Popup
+	Detail gadgets.DetailPopup
 	Wizard wizard.ConfigWizard
 
 	Focused      Pane
@@ -76,6 +77,7 @@ func New(opts ...Option) *Model {
 	m.Input = commands.New(theme)
 	m.Status = statusbar.New(theme)
 	m.Help = help.New(theme)
+	m.Detail = gadgets.NewDetailPopup(theme)
 	m.Wizard = wizard.New(o.Cfg)
 
 	return m
@@ -138,6 +140,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case uxtypes.ActionResultMsg:
 		return m.handleActionResult(msg)
+
+	case uxtypes.ShowDetailMsg:
+		m.Detail.Show(msg.Title, msg.Content)
+
+		return m, nil
+
+	case uxtypes.FetchDetailMsg:
+		return m, m.fetchDetail(msg.Scope)
 
 	case uxtypes.ShowSuggestionsMsg:
 		// Forward to the right panel — it switches to Actions tab.
@@ -287,6 +297,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleHelpKey(msg)
 	}
 
+	// When the detail popup is visible, it captures all keys.
+	if m.Detail.Visible {
+		return m.handleDetailKey(msg)
+	}
+
 	switch kb {
 	case key.Tab:
 		m.cycleFocus(1)
@@ -357,6 +372,19 @@ func (m *Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Forward scroll keys (j/k/up/down/pgup/pgdn) to the viewport.
 	cmd := m.Help.Update(msg)
+
+	return m, cmd
+}
+
+func (m *Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if key.MsgBinding(msg).ClosePopup() {
+		m.Detail.Hide()
+
+		return m, nil
+	}
+
+	// Forward scroll keys to the viewport.
+	cmd := m.Detail.Update(msg)
 
 	return m, cmd
 }
@@ -502,9 +530,15 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Dismiss help popup on click anywhere when visible.
+	// Dismiss popups on click anywhere when visible.
 	if m.Help.Visible {
 		m.Help.Hide()
+
+		return m, nil
+	}
+
+	if m.Detail.Visible {
+		m.Detail.Hide()
 
 		return m, nil
 	}
@@ -796,6 +830,7 @@ func (m *Model) recalcLayout() {
 	m.Input.SetSize(m.Width, inputHeight)
 	m.Status.SetSize(m.Width)
 	m.Help.SetSize(m.Width, m.Height)
+	m.Detail.SetSize(m.Width, m.Height)
 	m.Wizard.SetSize(m.Width, m.Height)
 }
 
@@ -825,6 +860,11 @@ func (m *Model) View() string {
 		return m.Help.View(m.Width, m.Height)
 	}
 
+	// Overlay the detail popup when visible.
+	if m.Detail.Visible {
+		return m.Detail.View(m.Width, m.Height)
+	}
+
 	// Overlay the config wizard when visible.
 	if m.Wizard.Visible {
 		return m.Wizard.View(m.Width, m.Height)
@@ -841,4 +881,5 @@ func (m *Model) setTheme() {
 	m.Input.Theme = theme
 	m.Status.Theme = theme
 	m.Help.Theme = theme
+	m.Detail.Theme = theme
 }

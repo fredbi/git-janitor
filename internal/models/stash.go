@@ -17,4 +17,13 @@ type Stash struct {
 
 	// LastUpdatedAt is the timestamp of the stash entry.
 	LastUpdatedAt time.Time
+
+	// Detail is populated on demand by CollectDetails (nil until requested).
+	Detail *StashDetail
+}
+
+// StashDetail holds on-demand detail information for a stash entry.
+type StashDetail struct {
+	// DiffStat is the output of git stash show --include-untracked <ref>.
+	DiffStat string
 }

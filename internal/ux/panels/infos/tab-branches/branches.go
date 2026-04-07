@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/models"
 	"github.com/fredbi/git-janitor/internal/ux/gadgets"
+	"github.com/fredbi/git-janitor/internal/ux/key"
 	"github.com/fredbi/git-janitor/internal/ux/panels"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
@@ -71,6 +72,21 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 
 	if p.NavigateKey(km, len(p.branches)) {
 		p.ClampScroll(p.Height)
+
+		return nil
+	}
+
+	if key.MsgBinding(km) == key.Enter && p.Cursor >= 0 && p.Cursor < len(p.branches) {
+		b := p.branches[p.Cursor]
+
+		return func() tea.Msg {
+			return uxtypes.FetchDetailMsg{
+				Scope: models.ActionSuggestion{
+					SubjectKind: models.SubjectBranch,
+					Subjects:    []models.ActionSubject{{Subject: b.Name}},
+				},
+			}
+		}
 	}
 
 	return nil

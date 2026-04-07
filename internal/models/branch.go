@@ -43,6 +43,18 @@ type Branch struct {
 
 	// Hash is the commit hash at the tip of the branch.
 	Hash string
+
+	// Detail is populated on demand by CollectDetails (nil until requested).
+	Detail *BranchDetail
+}
+
+// BranchDetail holds on-demand detail information for a branch.
+type BranchDetail struct {
+	// LastCommitMessage is the subject line of the tip commit.
+	LastCommitMessage string
+
+	// DiffStat is the output of git diff --shortstat <default>...<branch>.
+	DiffStat string
 }
 
 // HasUpstream reports whether this branch tracks a remote branch.

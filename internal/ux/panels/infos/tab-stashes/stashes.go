@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/models"
 	"github.com/fredbi/git-janitor/internal/ux/gadgets"
+	"github.com/fredbi/git-janitor/internal/ux/key"
 	"github.com/fredbi/git-janitor/internal/ux/panels"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
@@ -51,11 +52,30 @@ func (p *Panel) SetSize(w, h int) {
 	p.Base.SetSize(w, h, 1, 1) // 1 reserved line for header
 }
 
-// Update handles key messages for cursor navigation.
+// Update handles key messages for cursor navigation and detail popup.
 func (p *Panel) Update(msg tea.Msg) tea.Cmd {
-	if km, ok := msg.(tea.KeyMsg); ok {
-		p.NavigateKey(km, len(p.stashes))
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return nil
+	}
+
+	if p.NavigateKey(km, len(p.stashes)) {
 		p.ClampScroll(p.Height)
+
+		return nil
+	}
+
+	if key.MsgBinding(km) == key.Enter && p.Cursor >= 0 && p.Cursor < len(p.stashes) {
+		s := p.stashes[p.Cursor]
+
+		return func() tea.Msg {
+			return uxtypes.FetchDetailMsg{
+				Scope: models.ActionSuggestion{
+					SubjectKind: models.SubjectStash,
+					Subjects:    []models.ActionSubject{{Subject: s.Ref}},
+				},
+			}
+		}
 	}
 
 	return nil

@@ -38,6 +38,13 @@ type Engineer interface {
 	// The engine resolves the origin URL and checks config/token availability internally.
 	Collect(ctx context.Context, info *models.RepoInfo, opts ...models.CollectOption) *models.RepoInfo
 
+	// CollectDetails enriches the given RepoInfo with on-demand details
+	// for the subjects identified in the scope suggestion.
+	// SubjectKind determines what to enrich (branches, stashes, etc.).
+	// Only the named subjects are populated; others are left untouched.
+	// The returned RepoInfo is the input enriched in place (and cached).
+	CollectDetails(ctx context.Context, info *models.RepoInfo, scope models.ActionSuggestion) *models.RepoInfo
+
 	// Refresh fetches from remotes then re-collects repo info.
 	// The info parameter must be non-nil and must have Path set.
 	Refresh(ctx context.Context, info *models.RepoInfo) *models.RepoInfo

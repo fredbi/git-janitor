@@ -167,6 +167,7 @@ Press Esc or Ctrl+H to close.  /help for general help.
     j / k  or  ↑ / ↓  Navigate branch list
     g / G              Jump to top / bottom
     PgUp / PgDn        Page up / page down
+    Enter              Show branch details
 
   Auto-refreshes after Ctrl+R (fetch).
 
@@ -184,6 +185,7 @@ Press Esc or Ctrl+H to close.  /help for general help.
     j / k  or  ↑ / ↓  Navigate stash list
     g / G              Jump to top / bottom
     PgUp / PgDn        Page up / page down
+    Enter              Show stash details
 
 ────────────────────
 Press Esc or Ctrl+H to close.  /help for general help.

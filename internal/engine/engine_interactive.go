@@ -216,6 +216,72 @@ func (e *Interactive) Collect(ctx context.Context, info *models.RepoInfo, opts .
 	return info
 }
 
+// CollectDetails enriches a RepoInfo with on-demand details for the given subjects.
+// Only the named subjects are populated; the result is cached.
+func (e *Interactive) CollectDetails(ctx context.Context, info *models.RepoInfo, scope models.ActionSuggestion) *models.RepoInfo {
+	if info == nil || info.Path == "" {
+		return info
+	}
+
+	runner := gitbackend.NewRunner(info.Path)
+
+	switch scope.SubjectKind {
+	case models.SubjectBranch:
+		e.collectBranchDetails(ctx, runner, info, scope)
+	case models.SubjectStash:
+		e.collectStashDetails(ctx, runner, info, scope)
+	}
+
+	// Update cache with enriched data.
+	info.CollectedAt = time.Now()
+	if info.Err == nil {
+		e.cachePut(info)
+	}
+
+	return info
+}
+
+func (e *Interactive) collectBranchDetails(ctx context.Context, runner *gitbackend.Runner, info *models.RepoInfo, scope models.ActionSuggestion) {
+	requested := make(map[string]bool, len(scope.Subjects))
+	for _, sub := range scope.Subjects {
+		requested[sub.Subject] = true
+	}
+
+	for i := range info.Branches {
+		b := &info.Branches[i]
+		if !requested[b.Name] {
+			continue
+		}
+
+		// Skip if already populated.
+		if b.Detail != nil {
+			continue
+		}
+
+		b.Detail = runner.CollectBranchDetail(ctx, b.Name, info.DefaultBranch)
+	}
+}
+
+func (e *Interactive) collectStashDetails(ctx context.Context, runner *gitbackend.Runner, info *models.RepoInfo, scope models.ActionSuggestion) {
+	requested := make(map[string]bool, len(scope.Subjects))
+	for _, sub := range scope.Subjects {
+		requested[sub.Subject] = true
+	}
+
+	for i := range info.Stashes {
+		s := &info.Stashes[i]
+		if !requested[s.Ref] {
+			continue
+		}
+
+		if s.Detail != nil {
+			continue
+		}
+
+		s.Detail = runner.CollectStashDetail(ctx, s.Ref)
+	}
+}
+
 // Refresh fetches from remotes then re-collects full repo info.
 // The result always bypasses and overwrites the cache.
 func (e *Interactive) Refresh(ctx context.Context, info *models.RepoInfo) *models.RepoInfo {

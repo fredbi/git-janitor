@@ -113,6 +113,19 @@ type CopyToClipboardMsg struct {
 	Text string
 }
 
+// ShowDetailMsg is sent when detail collection completes and the popup
+// should be displayed.
+type ShowDetailMsg struct {
+	Title   string
+	Content string
+}
+
+// FetchDetailMsg is sent when the user requests details for a branch or stash.
+// The engine fetches the details asynchronously, then ShowDetailMsg is sent.
+type FetchDetailMsg struct {
+	Scope models.ActionSuggestion
+}
+
 // GitHubInfoMsg is sent when background GitHub API fetch completes.
 type GitHubInfoMsg struct {
 	RepoPath string

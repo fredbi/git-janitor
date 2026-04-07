@@ -179,6 +179,20 @@ func cmdGCAggressive() []string {
 	return []string{"gc", "--aggressive"}
 }
 
+// --- Details (on-demand) ---
+
+func cmdLogMessage(ref string) []string {
+	return []string{"log", "-1", "--format=%s", ref}
+}
+
+func cmdDiffStat(rangeSpec string) []string {
+	return []string{"diff", "--stat", rangeSpec}
+}
+
+func cmdStashShow(ref string) []string {
+	return []string{"stash", "show", "--include-untracked", ref}
+}
+
 // --- Staging & committing ---
 
 func cmdResetHead() []string {
