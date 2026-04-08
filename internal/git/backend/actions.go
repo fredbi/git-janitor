@@ -189,6 +189,31 @@ func (r *Runner) DeleteBranch(ctx context.Context, name, defaultBranch string) m
 	return models.ActionResult{OK: true, Message: "deleted branch " + name}
 }
 
+// DeleteRemoteBranch deletes a branch on a remote via git push --delete.
+func (r *Runner) DeleteRemoteBranch(ctx context.Context, remote, branch string) models.ActionResult {
+	_, err := r.run(ctx, cmdDeleteRemoteBranch(remote, branch)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("delete remote branch %s/%s failed: %v", remote, branch, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: fmt.Sprintf("deleted %s/%s", remote, branch)}
+}
+
+// RenameBranch renames a local branch.
+// If the branch being renamed is currently checked out, git branch -m handles it.
+// Also updates the upstream tracking ref to point to the remote's equivalent.
+func (r *Runner) RenameBranch(ctx context.Context, oldName, newName string) models.ActionResult {
+	_, err := r.run(ctx, cmdRenameBranch(oldName, newName)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("rename %q → %q failed: %v", oldName, newName, err)}
+	}
+
+	// Update upstream tracking to origin/<newName> if applicable.
+	r.run(ctx, "branch", "--set-upstream-to", "origin/"+newName, newName) //nolint:errcheck // best-effort
+
+	return models.ActionResult{OK: true, Message: fmt.Sprintf("renamed %q → %q", oldName, newName)}
+}
+
 // PushBranch pushes a local branch to the given remote and sets upstream tracking.
 func (r *Runner) PushBranch(ctx context.Context, remote, name string) models.ActionResult {
 	_, err := r.run(ctx, cmdPushBranchUpstream(remote, name)...)
@@ -333,6 +358,26 @@ func (r *Runner) MergeIntoRemote(ctx context.Context, source string, target mode
 
 		return models.ActionResult{OK: true, Message: fmt.Sprintf("merged %s into %s and pushed to %s", source, target.Name, remote)}
 	})
+}
+
+// SetRemoteURL updates the URL of a remote.
+func (r *Runner) SetRemoteURL(ctx context.Context, remoteName, newURL string) models.ActionResult {
+	_, err := r.run(ctx, cmdRemoteSetURL(remoteName, newURL)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("set-url %s failed: %v", remoteName, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: fmt.Sprintf("updated %s URL", remoteName)}
+}
+
+// DropStash deletes a single stash entry by ref (e.g. "stash@{0}").
+func (r *Runner) DropStash(ctx context.Context, ref string) models.ActionResult {
+	_, err := r.run(ctx, cmdStashDrop(ref)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("stash drop %s failed: %v", ref, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "dropped " + ref}
 }
 
 // StashDirty unstages any staged changes, then stashes all uncommitted work

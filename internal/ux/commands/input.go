@@ -101,10 +101,12 @@ func (c *Input) Submit() *Command {
 
 // Sentinel values returned by ExecuteCommand to signal the caller.
 const (
-	CommandShowHelp   = "\x00help"   // signals the caller to open the help popup
-	CommandShowConfig = "\x00config" // signals the caller to open the config wizard
-	CommandScanRoots  = "\x00scan"   // signals the caller to scan configured roots
-	CommandThemePrefix = "\x00theme:" // signals the caller to switch theme (prefix)
+	CommandShowHelp    = "\x00help"    // signals the caller to open the help popup
+	CommandShowConfig  = "\x00config"  // signals the caller to open the config wizard
+	CommandScanRoots   = "\x00scan"    // signals the caller to scan configured roots
+	CommandThemePrefix = "\x00theme:"  // signals the caller to switch theme (prefix)
+	CommandShowChecks  = "\x00checks"  // signals the caller to list all checks
+	CommandShowActions = "\x00actions" // signals the caller to list all actions
 )
 
 // ExecuteCommand processes a Command and returns a status message.
@@ -129,6 +131,10 @@ func ExecuteCommand(cmd *Command) string {
 		return CommandScanRoots
 	case "/clear":
 		return "Cleared."
+	case "/checks":
+		return CommandShowChecks
+	case "/actions":
+		return CommandShowActions
 	case "/theme":
 		// No argument: cycle to next theme.
 		return CommandThemePrefix

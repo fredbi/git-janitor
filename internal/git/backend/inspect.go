@@ -149,7 +149,12 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 			merged = make(map[string]bool)
 		}
 
-		MarkMerged(ctx, r, info.Branches, info.DefaultBranch, merged)
+		mergedRemote, remoteErr := r.MergedRemoteBranches(ctx, info.DefaultBranch)
+		if remoteErr != nil {
+			mergedRemote = make(map[string]bool)
+		}
+
+		MarkMerged(ctx, r, info.Branches, info.DefaultBranch, merged, mergedRemote)
 
 		// Check merge and rebase feasibility for unmerged local branches.
 		r.CheckMergeable(ctx, info.Branches, info.DefaultBranch)

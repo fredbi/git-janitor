@@ -67,6 +67,8 @@ Commands (type in the input bar)
   /theme             Cycle to the next color theme
   /theme <name>      Switch to a specific theme
   /themes            List available theme names
+  /checks            List all registered checks
+  /actions           List all registered actions
   /clear             Clear the status bar message
   /quit              Quit the application
 

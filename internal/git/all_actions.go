@@ -25,5 +25,9 @@ func AllActions() iter.Seq[ifaces.Action] {
 		actions.NewCommitDirty(),
 		actions.NewCommitStash(),
 		actions.NewSwitchDefaultBranch(),
+		actions.NewRenameBranch(),
+		actions.NewDeleteRemoteBranch(),
+		actions.NewDropStash(),
+		actions.NewStripRemoteCredentials(),
 	})
 }

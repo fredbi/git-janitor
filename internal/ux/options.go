@@ -12,10 +12,12 @@ import (
 type Option func(*options)
 
 type options struct {
-	Cfg    *config.Config
-	Engine ifaces.Engineer
-	Theme  uxtypes.Theme
-	themes *registry.Registry[uxtypes.Theme]
+	Cfg     *config.Config
+	Engine  ifaces.Engineer
+	Theme   uxtypes.Theme
+	themes  *registry.Registry[uxtypes.Theme]
+	checks  *registry.Registry[ifaces.Check]
+	actions *registry.Registry[ifaces.Action]
 }
 
 func WithConfig(cfg *config.Config) Option {
@@ -35,6 +37,18 @@ func WithEngine(e ifaces.Engineer) Option {
 func WithThemes(themes *registry.Registry[uxtypes.Theme]) Option {
 	return func(o *options) {
 		o.themes = themes
+	}
+}
+
+func WithChecks(checks *registry.Registry[ifaces.Check]) Option {
+	return func(o *options) {
+		o.checks = checks
+	}
+}
+
+func WithActions(actions *registry.Registry[ifaces.Action]) Option {
+	return func(o *options) {
+		o.actions = actions
 	}
 }
 

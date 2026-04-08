@@ -2,6 +2,7 @@ package ux
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -426,6 +427,14 @@ func (m *Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Wizard.SetSize(m.Width, m.Height)
 
 			return m, wizCmd
+		case commands.CommandShowChecks:
+			m.Detail.Show("Registered Checks", m.buildCheckList())
+
+			return m, nil
+		case commands.CommandShowActions:
+			m.Detail.Show("Registered Actions", m.buildActionList())
+
+			return m, nil
 		case commands.CommandScanRoots:
 			if m.Cfg.IsEmpty() {
 				m.Status.SetMessage("No roots configured. Use /config to add one.")
@@ -916,6 +925,121 @@ func normalizeViewLines(s string, targetLines int) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// buildCheckList returns a formatted string listing all registered checks.
+func (m *Model) buildCheckList() string {
+	if m.checks == nil {
+		return "(no checks registered)"
+	}
+
+	type checkInfo struct {
+		name string
+		desc string
+		kind string
+	}
+
+	var gitChecks, githubChecks []checkInfo
+
+	for name, c := range m.checks.All() {
+		info := checkInfo{name: name, desc: c.Description()}
+
+		switch c.Kind() {
+		case models.CheckKindGitHub:
+			info.kind = "github"
+			githubChecks = append(githubChecks, info)
+		default:
+			info.kind = "git"
+			gitChecks = append(gitChecks, info)
+		}
+	}
+
+	bold := lipgloss.NewStyle().Bold(true)
+	dim := lipgloss.NewStyle().Foreground(m.Theme.Dim)
+
+	var b strings.Builder
+
+	b.WriteString(bold.Render(fmt.Sprintf("Git Checks (%d)", len(gitChecks))) + "\n")
+	b.WriteString(dim.Render(strings.Repeat("─", 40)) + "\n") //nolint:mnd // separator width
+
+	for _, c := range gitChecks {
+		b.WriteString("  " + bold.Render(c.name) + "\n")
+		b.WriteString("    " + dim.Render(c.desc) + "\n")
+	}
+
+	b.WriteString("\n" + bold.Render(fmt.Sprintf("GitHub Checks (%d)", len(githubChecks))) + "\n")
+	b.WriteString(dim.Render(strings.Repeat("─", 40)) + "\n") //nolint:mnd // separator width
+
+	for _, c := range githubChecks {
+		b.WriteString("  " + bold.Render(c.name) + "\n")
+		b.WriteString("    " + dim.Render(c.desc) + "\n")
+	}
+
+	return b.String()
+}
+
+// buildActionList returns a formatted string listing all registered actions.
+func (m *Model) buildActionList() string {
+	if m.actions == nil {
+		return "(no actions registered)"
+	}
+
+	type actionInfo struct {
+		name string
+		desc string
+		kind string
+	}
+
+	var gitActions, githubActions []actionInfo
+
+	for name, a := range m.actions.All() {
+		info := actionInfo{name: name, desc: a.Description()}
+
+		switch a.Kind() {
+		case models.ActionKindGitHub:
+			info.kind = "github"
+			githubActions = append(githubActions, info)
+		default:
+			info.kind = "git"
+			gitActions = append(gitActions, info)
+		}
+	}
+
+	bold := lipgloss.NewStyle().Bold(true)
+	dim := lipgloss.NewStyle().Foreground(m.Theme.Dim)
+	warn := lipgloss.NewStyle().Foreground(m.Theme.Warning)
+
+	var b strings.Builder
+
+	b.WriteString(bold.Render(fmt.Sprintf("Git Actions (%d)", len(gitActions))) + "\n")
+	b.WriteString(dim.Render(strings.Repeat("─", 40)) + "\n") //nolint:mnd // separator width
+
+	for _, a := range gitActions {
+		marker := " "
+		if action, ok := m.actions.Get(a.name); ok && action.Destructive() {
+			marker = warn.Render("!")
+		}
+
+		b.WriteString("  " + marker + " " + bold.Render(a.name) + "\n")
+		b.WriteString("      " + dim.Render(a.desc) + "\n")
+	}
+
+	b.WriteString("\n" + bold.Render(fmt.Sprintf("GitHub Actions (%d)", len(githubActions))) + "\n")
+	b.WriteString(dim.Render(strings.Repeat("─", 40)) + "\n") //nolint:mnd // separator width
+
+	for _, a := range githubActions {
+		marker := " "
+		if action, ok := m.actions.Get(a.name); ok && action.Destructive() {
+			marker = warn.Render("!")
+		}
+
+		b.WriteString("  " + marker + " " + bold.Render(a.name) + "\n")
+		b.WriteString("      " + dim.Render(a.desc) + "\n")
+	}
+
+	b.WriteString("\n  " + warn.Render("!") + " = destructive (requires confirmation)\n")
+
+	return b.String()
 }
 
 // setTheme propagates the current theme to all sub-components.

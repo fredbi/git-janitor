@@ -108,10 +108,12 @@ func (r *Runner) DefaultBranch(ctx context.Context) (string, error) {
 		ref := strings.TrimSpace(out)
 		// ref is "origin/main" — strip the remote prefix.
 		if _, branch, ok := strings.Cut(ref, "/"); ok {
-			return branch, nil
+			// Verify the branch actually exists locally — the symref can be stale
+			// (e.g. origin/HEAD points to "main" but the repo uses "master").
+			if _, verifyErr := r.run(ctx, cmdRevParseVerify(branch)...); verifyErr == nil {
+				return branch, nil
+			}
 		}
-
-		return ref, nil
 	}
 
 	// Fallback: check if main or master exist locally.
@@ -188,6 +190,27 @@ func (r *Runner) MergedBranches(ctx context.Context, target string) (map[string]
 	return merged, nil
 }
 
+// MergedRemoteBranches returns the set of remote branch names (e.g. "upstream/feature")
+// whose tips are reachable from target.
+func (r *Runner) MergedRemoteBranches(ctx context.Context, target string) (map[string]bool, error) {
+	out, err := r.run(ctx, cmdRemoteBranchMerged(target)...)
+	if err != nil {
+		return nil, err
+	}
+
+	merged := make(map[string]bool)
+
+	scanner := bufio.NewScanner(strings.NewReader(out))
+	for scanner.Scan() {
+		name := strings.TrimSpace(scanner.Text())
+		if name != "" {
+			merged[name] = true
+		}
+	}
+
+	return merged, nil
+}
+
 // IsFullyApplied checks whether all commits on branch have already been applied
 // to target, using patch-id comparison (git cherry). This detects squash-merged
 // and rebased branches that git branch --merged would miss.
@@ -214,20 +237,38 @@ func (r *Runner) IsFullyApplied(ctx context.Context, target, branch string) (boo
 //   - reachable from target (in the merged set from git branch --merged), or
 //   - fully applied to target by patch-id (git cherry), catching squash-merges and rebases.
 //
+// For remote branches, mergedRemote provides the set from git branch -r --merged.
 // The runner is optional: if nil, only the reachability check is used.
-func MarkMerged(ctx context.Context, r *Runner, branches []models.Branch, target string, merged map[string]bool) {
+func MarkMerged(ctx context.Context, r *Runner, branches []models.Branch, target string, merged, mergedRemote map[string]bool) {
 	for i := range branches {
 		b := &branches[i]
 
-		// Already caught by --merged (fast path).
+		if b.IsRemote {
+			// Remote branches: fast path via git branch -r --merged.
+			if mergedRemote[b.Name] {
+				b.Merged = true
+
+				continue
+			}
+
+			// Slow path: check via patch-id comparison (catches squash-merges).
+			if r != nil {
+				if applied, err := r.IsFullyApplied(ctx, target, b.Name); err == nil && applied {
+					b.Merged = true
+				}
+			}
+
+			continue
+		}
+
+		// Local branches: check against the local merged set (fast path).
 		if merged[b.Name] {
 			b.Merged = true
 
 			continue
 		}
 
-		// Skip remote branches and the target branch itself.
-		if b.IsRemote || b.Name == target || r == nil {
+		if b.Name == target || r == nil {
 			continue
 		}
 

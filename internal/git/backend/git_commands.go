@@ -23,6 +23,10 @@ func cmdBranchMerged(target string) []string {
 	return []string{"branch", "--merged", target, "--format=%(refname:short)"}
 }
 
+func cmdRemoteBranchMerged(target string) []string {
+	return []string{"branch", "-r", "--merged", target, "--format=%(refname:short)"}
+}
+
 func cmdCherry(target, branch string) []string {
 	return []string{"cherry", target, branch}
 }
@@ -73,6 +77,10 @@ func cmdStashSave(message string) []string {
 
 func cmdStashPop() []string {
 	return []string{"stash", "pop"}
+}
+
+func cmdStashDrop(ref string) []string {
+	return []string{"stash", "drop", ref}
 }
 
 func cmdStashList() []string {
@@ -155,12 +163,24 @@ func cmdPushForceWithLease(remote, branch string) []string {
 	return []string{"push", "--force-with-lease", remote, branch}
 }
 
+func cmdRemoteSetURL(remoteName, newURL string) []string {
+	return []string{"remote", "set-url", remoteName, newURL}
+}
+
 func cmdRenameRemote(oldName, newName string) []string {
 	return []string{"remote", "rename", oldName, newName}
 }
 
 func cmdDeleteBranch(name string) []string {
 	return []string{"branch", "-D", name}
+}
+
+func cmdDeleteRemoteBranch(remote, branch string) []string {
+	return []string{"push", remote, "--delete", branch}
+}
+
+func cmdRenameBranch(oldName, newName string) []string {
+	return []string{"branch", "-m", oldName, newName}
 }
 
 func cmdPushBranchUpstream(remote, branch string) []string {

@@ -35,6 +35,8 @@ defaults:
       - name: git-stale-dirty
       - name: git-stale-stash
       - name: git-inactive-nondefault
+      - name: remote-branch-merged-not-deleted
+      - name: remote-credentials-in-url
       # Traits
       - name: traits-shallow
       - name: traits-submodules
@@ -80,6 +82,14 @@ defaults:
       - name: git-commit-stash
         auto: false
       - name: git-switch-default-branch
+        auto: false
+      - name: rename-branch
+        auto: false
+      - name: delete-remote-branch
+        auto: false
+      - name: drop-stash
+        auto: false
+      - name: strip-remote-credentials
         auto: false
       # Clone management
       - name: delete-local-clone

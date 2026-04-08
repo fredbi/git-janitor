@@ -55,6 +55,18 @@ func (c DefaultBranchMismatch) evaluate(data *models.PlatformInfo) (iter.Seq[mod
 		CheckName: c.Name(),
 		Severity:  models.SeverityLow,
 		Summary:   fmt.Sprintf("default branch mismatch: GitHub=%q, local=%q", data.DefaultBranch, data.LocalDefaultBranch),
-		Detail:    "The GitHub default branch differs from the local git default branch. This may indicate a recent rename or misconfiguration.",
+		Detail: fmt.Sprintf(
+			"The GitHub default branch %q differs from the local default %q. "+
+				"Renaming the local branch to match GitHub is recommended.",
+			data.DefaultBranch, data.LocalDefaultBranch,
+		),
+		Suggestions: []models.ActionSuggestion{{
+			ActionName:  "rename-branch",
+			SubjectKind: models.SubjectBranch,
+			Subjects: []models.ActionSubject{{
+				Subject: data.LocalDefaultBranch,
+				Params:  []string{data.DefaultBranch}, // new name; old name comes from Subject
+			}},
+		}},
 	}), nil
 }

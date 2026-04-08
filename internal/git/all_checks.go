@@ -39,5 +39,7 @@ func AllChecks() iter.Seq[ifaces.Check] {
 		checks.NewStaleDirty(),
 		checks.NewStaleStash(),
 		checks.NewInactiveNondefault(),
+		checks.NewRemoteBranchMergedNotDeleted(),
+		checks.NewRemoteCredentials(),
 	})
 }

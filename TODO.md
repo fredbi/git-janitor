@@ -10,20 +10,9 @@
 * [x] locked kv store
 * [x] diverged branches doesn't work (benchviz)
 * [x] action github set-repo-description: wrong runner type
-* ux glitch: left panel changes height depending on the tab displayed on the right (+1/-1 line)
-* delete-branch: branch can be deleted but this is the current branch -> should first switch to the default branch, then delete
+* [x] ux glitch: left panel changes height depending on the tab displayed on the right (+1/-1 line)
+* [x] delete-branch: branch can be deleted but this is the current branch -> should first switch to the default branch, then delete
 * issues/PR/workflows: ...more... indicator not 100% accurate, esp. when data is cached
-
-## stashes, dirty tree & inactive local
-
-* [x] new stash info: last updated in git time
-* [x] stashes: a standalone tab for stashes (the "stashes" section of the Facts tab is moved to its own panel)
-* [x] new git clone info: last modified local
-* [x] git action on stash: stash to branch -> pop stash to worktree, commit, push branch upstream (user input options: branch name, commit msg)
-* [x] new git action: for stashes older than 30 days, suggest move to commit & branch action
-* [x] new git check: for locals inactive for 7 days with dirty tree, suggest to stash with untracked
-* [x] new git check: for inactive locals with dirty tree older than 30 days, suggest same as for old stash: copy to worktree, branch out, commit, push upstream
-* [x] local inactive repo with current branch != default branch : suggest switch to default branch
 
 ## git checks / alerts
 
@@ -36,29 +25,11 @@ Improvements:
 * branches/stashes: new ux interactions in the details panel:
   * D : delete stash / branch
   * R : rebase (could also apply to stashes)
-* git-exposed-credentials-remote: check the presence of a password/token in the remote url
-* forks: check already merged remote on upstream
-* new git action: delete stash
 * test case with multiple worktrees
+* [x] git-exposed-credentials-remote: check the presence of a password/token in the remote url
+* [x] forks: check already merged remote on upstream
+* [x] new git action: delete stash
 * [x] check branch to delete: if current branch can be deleted, switch to default first
-
-## history
-
-* [x] keep full record of git command
-
-## [x] branches
-
-* [x] new branch info:
-  * [x] last updated in git time 
-  * [x] last commit message
-  * [x] git diff --stat
-* [x] new stash details: git stash --show --include-untracked
-* [x] add text zone at the top of the details to hold the last commit message (elided) of the current select branch
-* [x] add time column to branches panel
-
-* [x] branches tab:
-  * ordered by last updated in git time DESC
-  * EXCEPTION: default branch always comes first, current branch second (if not default)
 
 ## github features
 
@@ -90,6 +61,7 @@ Improvements:
 * [x] status bar refresh shifts display
 * [x] status bar with large error messages
 * [x] other panel height shifting causes
+* [x] commands to list and document all checks and actions
 * activity pagination glitches
 
 
@@ -218,3 +190,32 @@ other fields are a specialization for our panels
 ### [x] help
 
 * [x] ctrl-H: contextualized help for current tab
+
+### history
+
+* [x] keep full record of git command
+
+### [x] branches
+
+* [x] new branch info:
+  * [x] last updated in git time 
+  * [x] last commit message
+  * [x] git diff --stat
+* [x] new stash details: git stash --show --include-untracked
+* [x] add text zone at the top of the details to hold the last commit message (elided) of the current select branch
+* [x] add time column to branches panel
+
+* [x] branches tab:
+  * ordered by last updated in git time DESC
+  * EXCEPTION: default branch always comes first, current branch second (if not default)
+
+### stashes, dirty tree & inactive local
+
+* [x] new stash info: last updated in git time
+* [x] stashes: a standalone tab for stashes (the "stashes" section of the Facts tab is moved to its own panel)
+* [x] new git clone info: last modified local
+* [x] git action on stash: stash to branch -> pop stash to worktree, commit, push branch upstream (user input options: branch name, commit msg)
+* [x] new git action: for stashes older than 30 days, suggest move to commit & branch action
+* [x] new git check: for locals inactive for 7 days with dirty tree, suggest to stash with untracked
+* [x] new git check: for inactive locals with dirty tree older than 30 days, suggest same as for old stash: copy to worktree, branch out, commit, push upstream
+* [x] local inactive repo with current branch != default branch : suggest switch to default branch

@@ -81,6 +81,8 @@ func main() {
 		ux.WithConfig(cfg),
 		ux.WithThemes(themes),
 		ux.WithDefaultTheme(defaultTheme),
+		ux.WithChecks(checks),
+		ux.WithActions(actions),
 		ux.WithEngine(
 			engine.NewInteractive(
 				engine.WithConfig(cfg),
