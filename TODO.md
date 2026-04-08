@@ -12,26 +12,27 @@
 * [x] action github set-repo-description: wrong runner type
 * [x] ux glitch: left panel changes height depending on the tab displayed on the right (+1/-1 line)
 * [x] delete-branch: branch can be deleted but this is the current branch -> should first switch to the default branch, then delete
+* [x] delete remote branch error: missing user in remote URL??? (ci-workflows)
 * issues/PR/workflows: ...more... indicator not 100% accurate, esp. when data is cached
-* [ ] delete remote branch error: missing user in remote URL??? (ci-workflows)
 
 ## git checks / alerts
 
 Improvements:
 
 * [ ] UX (branches, stashes): mini-form overlay in actions panel for per-subject parameter editing (branch name, commit message) before execution
-* [ ] action to repair default branch mismatch
 * [ ] detect "track-only clones" and impose shallow clone
 * fork: rebase/merge/delete on remote branches
 * branches/stashes: new ux interactions in the details panel:
   * D : delete stash / branch
   * R : rebase (could also apply to stashes)
 * test case with multiple worktrees
+* [x] action to repair default branch mismatch
 * [x] git-exposed-credentials-remote: check the presence of a password/token in the remote url
 * [x] forks: check already merged remote on upstream
 * [x] new git action: delete stash
 * [x] check branch to delete: if current branch can be deleted, switch to default first
-* [ ] rebase-remote-branch
+* [x] rebase-remote-branch
+* [ ] fork-upstream-lagging / fork-sync-upstream : push origin commit to upstream
 
 ## github features
 
@@ -77,6 +78,7 @@ Improvements:
 ## AI features
 
 * add "manual actions" panel
+* add "quick actions": open in terminal, open in browser
 * add "suggestion actions" with "prompt runner"
 * check "material" stash or dirty
  * delete / clean
