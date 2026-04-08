@@ -44,6 +44,11 @@ type Branch struct {
 	// Hash is the commit hash at the tip of the branch.
 	Hash string
 
+	// AheadOnly is true when the branch has commits ahead of the default branch
+	// but the default branch is an ancestor (no divergence). Set for remote branches
+	// during full collection. False means the branch has diverged.
+	AheadOnly bool
+
 	// Detail is populated on demand by CollectDetails (nil until requested).
 	Detail *BranchDetail
 }

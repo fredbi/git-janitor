@@ -159,6 +159,14 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 		// Check merge and rebase feasibility for unmerged local branches.
 		r.CheckMergeable(ctx, info.Branches, info.DefaultBranch)
 		r.CheckRebaseable(ctx, info.Branches, info.DefaultBranch)
+
+		// For fork repos: also check upstream remote branches.
+		upstreamPrefix := models.RemoteUpstream + "/"
+		if models.FindRemote(info.Remotes, models.RemoteUpstream) != nil {
+			r.MarkRemoteAheadOnly(ctx, info.Branches, info.DefaultBranch, upstreamPrefix)
+			r.CheckRemoteMergeable(ctx, info.Branches, info.DefaultBranch, upstreamPrefix)
+			r.CheckRemoteRebaseable(ctx, info.Branches, info.DefaultBranch, upstreamPrefix)
+		}
 	}
 
 	// Derive SCM and kind from remotes.

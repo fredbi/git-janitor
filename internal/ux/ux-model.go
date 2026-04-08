@@ -268,10 +268,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.CtrlD:
-		// Show full status message in a detail popup (when truncated).
-		if m.Status.IsTruncated() {
-			m.Detail.Show("Status Details", m.Status.FullMessage())
-		}
+		// Show full status message in a detail popup.
+		m.Detail.Show("Status Details", m.Status.FullMessage())
 
 		return m, nil
 
@@ -396,6 +394,18 @@ func (m *Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key.MsgBinding(msg).ClosePopup() {
+		m.Detail.Hide()
+
+		return m, nil
+	}
+
+	if key.MsgBinding(msg) == key.C {
+		if err := gadgets.CopyToClipboard(context.Background(), m.Detail.Content); err != nil {
+			m.Status.SetMessagef("Copy failed: %v", err)
+		} else {
+			m.Status.SetMessage("Copied to clipboard")
+		}
+
 		m.Detail.Hide()
 
 		return m, nil

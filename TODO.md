@@ -13,6 +13,7 @@
 * [x] ux glitch: left panel changes height depending on the tab displayed on the right (+1/-1 line)
 * [x] delete-branch: branch can be deleted but this is the current branch -> should first switch to the default branch, then delete
 * issues/PR/workflows: ...more... indicator not 100% accurate, esp. when data is cached
+* [ ] delete remote branch error: missing user in remote URL??? (ci-workflows)
 
 ## git checks / alerts
 
@@ -30,6 +31,7 @@ Improvements:
 * [x] forks: check already merged remote on upstream
 * [x] new git action: delete stash
 * [x] check branch to delete: if current branch can be deleted, switch to default first
+* [ ] rebase-remote-branch
 
 ## github features
 
@@ -54,8 +56,6 @@ Improvements:
 * [x] new interaction for details (branches, stashes) (Enter)
 * [x] indicator if github is disabled/enabled
 * [x] help to mention GH_TOKEN variable to enable gihub 
-* is there a context associated to bubble components or should we always assume background?
-* self-update
 * [x] flip tab eight on the left panel
 * [x] differences in left panel eights depending on scrolling pagination available
 * [x] status bar refresh shifts display
@@ -63,6 +63,8 @@ Improvements:
 * [x] other panel height shifting causes
 * [x] commands to list and document all checks and actions
 * activity pagination glitches
+* is there a context associated to bubble components or should we always assume background?
+* self-update
 
 
 ## quality

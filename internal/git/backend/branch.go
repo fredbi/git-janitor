@@ -361,6 +361,69 @@ func (r *Runner) CheckRebaseable(ctx context.Context, branches []models.Branch, 
 	}
 }
 
+// CheckRemoteMergeable runs CanMerge for upstream remote branches that are
+// not merged and not the default branch, populating MergeCheck.
+func (r *Runner) CheckRemoteMergeable(ctx context.Context, branches []models.Branch, target, upstreamPrefix string) {
+	for i := range branches {
+		b := &branches[i]
+
+		if !b.IsRemote || b.Merged || !strings.HasPrefix(b.Name, upstreamPrefix) {
+			continue
+		}
+
+		branchName := strings.TrimPrefix(b.Name, upstreamPrefix)
+		if branchName == target {
+			continue
+		}
+
+		result := r.CanMerge(ctx, target, b.Name)
+		b.MergeCheck = &result
+	}
+}
+
+// CheckRemoteRebaseable runs CheckRebase for upstream remote branches that are
+// not merged and not the default branch, populating RebaseCheck.
+func (r *Runner) CheckRemoteRebaseable(ctx context.Context, branches []models.Branch, target, upstreamPrefix string) {
+	for i := range branches {
+		b := &branches[i]
+
+		if !b.IsRemote || b.Merged || !strings.HasPrefix(b.Name, upstreamPrefix) {
+			continue
+		}
+
+		branchName := strings.TrimPrefix(b.Name, upstreamPrefix)
+		if branchName == target {
+			continue
+		}
+
+		result := r.CheckRebase(ctx, target, b.Name)
+		b.RebaseCheck = &result
+	}
+}
+
+// MarkRemoteAheadOnly checks upstream remote branches and sets AheadOnly=true
+// when the default branch is an ancestor of the remote branch (i.e. the branch
+// is simply ahead, not diverged).
+func (r *Runner) MarkRemoteAheadOnly(ctx context.Context, branches []models.Branch, target, upstreamPrefix string) {
+	for i := range branches {
+		b := &branches[i]
+
+		if !b.IsRemote || b.Merged || !strings.HasPrefix(b.Name, upstreamPrefix) {
+			continue
+		}
+
+		branchName := strings.TrimPrefix(b.Name, upstreamPrefix)
+		if branchName == target {
+			continue
+		}
+
+		// git merge-base --is-ancestor <default> <branch>
+		// Exit 0 = default is ancestor of branch = branch is ahead only.
+		_, err := r.run(ctx, cmdIsAncestor(target, b.Name)...)
+		b.AheadOnly = err == nil
+	}
+}
+
 // LocalBranches returns only local branches.
 func (r *Runner) LocalBranches(ctx context.Context) ([]models.Branch, error) {
 	all, err := r.Branches(ctx)

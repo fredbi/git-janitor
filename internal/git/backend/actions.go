@@ -190,9 +190,17 @@ func (r *Runner) DeleteBranch(ctx context.Context, name, defaultBranch string) m
 }
 
 // DeleteRemoteBranch deletes a branch on a remote via git push --delete.
+// If the remote ref doesn't exist (already deleted), it prunes the stale
+// tracking ref and reports success.
 func (r *Runner) DeleteRemoteBranch(ctx context.Context, remote, branch string) models.ActionResult {
 	_, err := r.run(ctx, cmdDeleteRemoteBranch(remote, branch)...)
 	if err != nil {
+		if strings.Contains(err.Error(), "remote ref does not exist") {
+			// Branch already gone on the remote — prune the stale tracking ref.
+			r.run(ctx, "remote", "prune", remote) //nolint:errcheck // best-effort
+			return models.ActionResult{OK: true, Message: fmt.Sprintf("%s/%s already deleted on remote (pruned local ref)", remote, branch)}
+		}
+
 		return models.ActionResult{Message: fmt.Sprintf("delete remote branch %s/%s failed: %v", remote, branch, err)}
 	}
 

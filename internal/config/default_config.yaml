@@ -37,6 +37,7 @@ defaults:
       - name: git-inactive-nondefault
       - name: remote-branch-merged-not-deleted
       - name: remote-credentials-in-url
+      - name: remote-branch-diverged
       # Traits
       - name: traits-shallow
       - name: traits-submodules
@@ -90,6 +91,8 @@ defaults:
       - name: drop-stash
         auto: false
       - name: strip-remote-credentials
+        auto: false
+      - name: rebase-remote-branch
         auto: false
       # Clone management
       - name: delete-local-clone

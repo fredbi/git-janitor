@@ -22,6 +22,7 @@ Navigation
   Ctrl+C / Ctrl+Q    Quit
   Ctrl+R             Fetch (git fetch --all --tags) and refresh selected repo
   Ctrl+H             Contextual help for the focused panel/tab
+  Ctrl+D             Show status bar details (Esc: close, C: copy)
 
 Mouse
 ─────

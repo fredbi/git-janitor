@@ -10,12 +10,13 @@ import (
 )
 
 // DetailPopup is a scrollable overlay that displays detail text
-// for a selected item (branch, stash, etc.).
+// for a selected item (branch, stash, status message, etc.).
 type DetailPopup struct {
 	Theme    *uxtypes.Theme
 	Viewport viewport.Model
 	Visible  bool
 	Title    string
+	Content  string // raw content for clipboard copy
 	Width    int
 	Height   int
 }
@@ -31,6 +32,7 @@ func NewDetailPopup(theme *uxtypes.Theme) DetailPopup {
 // Show makes the popup visible with the given title and content.
 func (d *DetailPopup) Show(title, content string) {
 	d.Title = title
+	d.Content = content
 	d.Viewport.SetContent(content)
 	d.Visible = true
 	d.Viewport.GotoTop()
@@ -53,9 +55,9 @@ func (d *DetailPopup) SetSize(termWidth, termHeight int) {
 		d.Height = min(10, termHeight) //nolint:mnd // minimum height
 	}
 
-	// Account for border (2 lines top/bottom, 2 cols left/right) + title line.
-	d.Viewport.Width = d.Width - 4  //nolint:mnd // border
-	d.Viewport.Height = d.Height - 6 //nolint:mnd // border + title + padding
+	// Account for border (2) + title (1) + padding (1) + hint (1).
+	d.Viewport.Width = d.Width - 4   //nolint:mnd // border
+	d.Viewport.Height = d.Height - 7 //nolint:mnd // border + title + padding + hint
 }
 
 // Update handles messages for the popup viewport (scroll keys).
@@ -78,7 +80,13 @@ func (d *DetailPopup) View(termWidth, termHeight int) string {
 		Foreground(t.Bright).
 		PaddingBottom(1)
 
-	content := titleStyle.Render(d.Title) + "\n" + d.Viewport.View()
+	hintStyle := lipgloss.NewStyle().
+		Foreground(t.Dim).
+		PaddingTop(1)
+
+	content := titleStyle.Render(d.Title) + "\n" +
+		d.Viewport.View() + "\n" +
+		hintStyle.Render("Esc: close  C: copy to clipboard")
 
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
