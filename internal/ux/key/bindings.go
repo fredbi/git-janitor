@@ -25,6 +25,7 @@ const (
 	CtrlR Binding = "ctrl+r"
 	CtrlA Binding = "ctrl+a"
 	CtrlP Binding = "ctrl+p"
+	CtrlD Binding = "ctrl+d"
 
 	// Special keys.
 	Esc   Binding = "esc"

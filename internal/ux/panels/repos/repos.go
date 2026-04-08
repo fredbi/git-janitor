@@ -436,7 +436,13 @@ func (p *Panel) View(focused bool) string {
 		PaddingLeft(1)
 	hint := hintStyle.Render(fmt.Sprintf("Ctrl+A (%d/%d)", p.Active+1, len(p.Tabs)))
 
-	header := lipgloss.JoinHorizontal(lipgloss.Bottom, tabBar, "  ", hint)
+	// Only show the hint if there's enough room — prevents wrapping inside
+	// the border which would add an extra line and cause height jitter.
+	maxHeaderWidth := p.Width - 4 //nolint:mnd // border (2) + padding (2)
+	header := tabBar
+	if lipgloss.Width(tabBar)+lipgloss.Width(hint)+2 <= maxHeaderWidth { //nolint:mnd // 2 for "  " separator
+		header = lipgloss.JoinHorizontal(lipgloss.Bottom, tabBar, "  ", hint)
+	}
 
 	// --- Filter row ---
 	filterRow := p.renderFilterRow()
@@ -447,15 +453,14 @@ func (p *Panel) View(focused bool) string {
 		content = p.Tabs[p.Active].List.View()
 	}
 
-	inner := lipgloss.JoinVertical(lipgloss.Left, header, filterRow, content)
+	// Concatenate directly instead of JoinVertical to avoid width padding
+	// that could cause line wrapping inside the border.
+	inner := header + "\n" + filterRow + "\n" + content
 
-	// Truncate to fit the border box.
+	// Normalize inner content to exactly fit the border box.
 	maxInnerLines := p.Height - 2
 	if maxInnerLines > 0 {
-		lines := strings.Split(inner, "\n")
-		if len(lines) > maxInnerLines {
-			inner = strings.Join(lines[:maxInnerLines], "\n")
-		}
+		inner = normalizeLines(inner, maxInnerLines)
 	}
 
 	// --- Border ---
@@ -470,10 +475,28 @@ func (p *Panel) View(focused bool) string {
 		Width(p.Width - 2).
 		Height(p.Height - 2)
 
-	return border.Render(inner)
+	// Final safety: ensure the rendered output is exactly p.Height lines.
+	// lipgloss border does not clip overflow, so wrapping inside the border
+	// can produce extra lines.
+	return normalizeLines(border.Render(inner), p.Height)
 }
 
 // renderFilterRow renders the filter input row.
+// normalizeLines ensures s has exactly targetLines lines.
+func normalizeLines(s string, targetLines int) string {
+	lines := strings.Split(s, "\n")
+
+	if len(lines) > targetLines {
+		lines = lines[:targetLines]
+	}
+
+	for len(lines) < targetLines {
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 func (p *Panel) renderFilterRow() string {
 	row := p.Filter.View()
 

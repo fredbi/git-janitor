@@ -14,16 +14,6 @@
 * delete-branch: branch can be deleted but this is the current branch -> should first switch to the default branch, then delete
 * issues/PR/workflows: ...more... indicator not 100% accurate, esp. when data is cached
 
-## theming
-
-extract primary, secondary, tertiary: this is the base theme -> reusable as a bubble
-
-other fields are a specialization for our panels
-
-## help
-
-* [x] ctrl-H: contextualized help for current tab
-
 ## stashes, dirty tree & inactive local
 
 * [x] new stash info: last updated in git time
@@ -50,6 +40,8 @@ Improvements:
 * forks: check already merged remote on upstream
 * new git action: delete stash
 * test case with multiple worktrees
+* activity pagination glitches
+* check branch to delete: if current branch can be deleted, switch to default first
 
 ## history
 
@@ -94,6 +86,12 @@ Improvements:
 * [x] help to mention GH_TOKEN variable to enable gihub 
 * is there a context associated to bubble components or should we always assume background?
 * self-update
+* [x] flip tab eight on the left panel
+* [x] differences in left panel eights depending on scrolling pagination available
+* [x] status bar refresh shifts display
+* [x] status bar with large error messages
+* [x] other panel height shifting causes
+* activity pagination glitches
 
 
 ## quality
@@ -129,10 +127,6 @@ Example: action "prompt-resolve-merge-conflicts"
 * special instructions for golang: don't worry too much about go.mod / go.sum etc
 * prompt is stored in history
 * interactive mode: create new worktree and suggest user review?
-
-## config
-
-* rule-config wizard
 
 ## [x] cache
 
@@ -196,10 +190,6 @@ This operation should be provided by the queue component as a utility function.
 
 github client internal rate limiting is for the moment orthogonal to this mechanism and should remain untouched.
 
-## history book-keeping
-
-[x] This uses kvstore bucket "history"
-
 ## single all-alerts panel
 
 A panel that displays all alerts (by default not "info") on all repos
@@ -209,4 +199,23 @@ A panel that displays all alerts (by default not "info") on all repos
 ## config
 
 * root path auto-completion
+* auto-discover roots 
+* theme in config
+* rule-config wizard
+* browse all checks / all actions:
 
+## theming
+
+extract primary, secondary, tertiary: this is the base theme -> reusable as a bubble
+
+other fields are a specialization for our panels
+
+## STUFF DONE
+
+### history book-keeping
+
+[x] This uses kvstore bucket "history"
+
+### [x] help
+
+* [x] ctrl-H: contextualized help for current tab

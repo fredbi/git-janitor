@@ -266,6 +266,14 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
+	case key.CtrlD:
+		// Show full status message in a detail popup (when truncated).
+		if m.Status.IsTruncated() {
+			m.Detail.Show("Status Details", m.Status.FullMessage())
+		}
+
+		return m, nil
+
 	case key.CtrlR:
 		// Refresh: fetch --all --tags on the selected repo, then re-inspect.
 		repo, ok := m.Repos.SelectedRepo()
@@ -559,7 +567,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// Compute zone boundaries (must match recalcLayout).
 	const inputHeight = 3
 	halfWidth := m.Width / 2
-	panelHeight := m.Height - inputHeight - 1 // 1 for status bar
+	panelHeight := m.Height - inputHeight - 2 // 2 for status bar (message + progress) //nolint:mnd // matches recalcLayout
 	if panelHeight < 4 {
 		panelHeight = 4
 	}
@@ -600,6 +608,14 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.Focused = paneInput
 
 		return m, m.applyFocus()
+
+	case y >= panelHeight+inputHeight:
+		// Status bar zone — show full message if truncated.
+		if m.Status.IsTruncated() {
+			m.Detail.Show("Status Details", m.Status.FullMessage())
+		}
+
+		return m, nil
 	}
 
 	return m, nil
@@ -826,9 +842,10 @@ func (m *Model) applyThemeCommand(name string) {
 
 // recalcLayout distributes available space among the panes.
 func (m *Model) recalcLayout() {
-	// Reserve space: 3 lines for input border, 1 line for status bar.
+	// Reserve space: 3 lines for input border, 2 lines for status bar
+	// (message line + progress bar line, always reserved to prevent layout shift).
 	const inputHeight = 3
-	const statusHeight = 1
+	const statusHeight = 2
 
 	panelHeight := m.Height - inputHeight - statusHeight
 	if panelHeight < 4 {
@@ -860,12 +877,13 @@ func (m *Model) View() string {
 	)
 
 	// Stack: panels, input, status bar.
-	base := lipgloss.JoinVertical(
-		lipgloss.Left,
-		panels,
-		m.Input.View(m.Focused == paneInput),
-		m.Status.View(),
-	)
+	// Use direct concatenation to avoid JoinVertical width-padding
+	// which could cause line wrapping.
+	base := panels + "\n" + m.Input.View(m.Focused == paneInput) + "\n" + m.Status.View()
+
+	// Final safety: clamp total output to exactly m.Height lines.
+	// This prevents any overflow from pushing content off-screen.
+	base = normalizeViewLines(base, m.Height)
 
 	// Overlay the help popup when visible.
 	if m.Help.Visible {
@@ -883,6 +901,21 @@ func (m *Model) View() string {
 	}
 
 	return base
+}
+
+// normalizeViewLines ensures a rendered string has exactly targetLines lines.
+func normalizeViewLines(s string, targetLines int) string {
+	lines := strings.Split(s, "\n")
+
+	if len(lines) > targetLines {
+		lines = lines[:targetLines]
+	}
+
+	for len(lines) < targetLines {
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // setTheme propagates the current theme to all sub-components.

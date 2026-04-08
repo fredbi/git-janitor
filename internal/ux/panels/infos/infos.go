@@ -318,7 +318,13 @@ func (p *Panel) View(focused bool) string {
 		PaddingLeft(1)
 	hint := hintStyle.Render(fmt.Sprintf("Ctrl+A: switch tab (%d/%d)", int(p.Active)+1, RightTabCount))
 
-	header := lipgloss.JoinHorizontal(lipgloss.Bottom, tabBar, "  ", hint)
+	// Only show the hint if there's enough room — otherwise the header
+	// wraps inside the border, adding an extra line and shifting panel heights.
+	maxHeaderWidth := p.Width - 4 //nolint:mnd // border (2) + padding (2)
+	header := tabBar
+	if lipgloss.Width(tabBar)+lipgloss.Width(hint)+2 <= maxHeaderWidth { //nolint:mnd // 2 for "  " separator
+		header = lipgloss.JoinHorizontal(lipgloss.Bottom, tabBar, "  ", hint)
+	}
 
 	// --- Content ---
 	var content string
@@ -341,13 +347,16 @@ func (p *Panel) View(focused bool) string {
 		panic(errors.New("invalid tab"))
 	}
 
-	inner := lipgloss.JoinVertical(lipgloss.Left, header, content)
+	// Concatenate directly instead of JoinVertical to avoid width padding
+	// that could cause line wrapping inside the border.
+	inner := header + "\n" + content
 
-	// Truncate inner content to fit the border box.
-	// Border uses 2 lines (top + bottom), header uses 1 line.
+	// Normalize inner content to exactly fit the border box.
+	// This prevents ±1 line fluctuations caused by different tabs
+	// producing different numbers of content lines.
 	maxInnerLines := p.Height - 2
 	if maxInnerLines > 0 {
-		inner = truncateLines(inner, maxInnerLines)
+		inner = normalizeLines(inner, maxInnerLines)
 	}
 
 	// --- Border ---
@@ -362,7 +371,8 @@ func (p *Panel) View(focused bool) string {
 		Width(p.Width - 2).
 		Height(p.Height - 2)
 
-	return border.Render(inner)
+	// Final safety: ensure the rendered output is exactly p.Height lines.
+	return normalizeLines(border.Render(inner), p.Height)
 }
 
 func (p *Panel) refreshRecent(repoPath string) {
@@ -377,12 +387,18 @@ func (p *Panel) refreshRecent(repoPath string) {
 	p.Recent.SetHistory(entries)
 }
 
-// truncateLines keeps at most maxLines lines from s.
-func truncateLines(s string, maxLines int) string {
+// normalizeLines ensures s has exactly targetLines lines — truncating excess
+// or padding with empty lines. This prevents height fluctuations across tabs.
+func normalizeLines(s string, targetLines int) string {
 	lines := strings.Split(s, "\n")
-	if len(lines) <= maxLines {
-		return s
+
+	if len(lines) > targetLines {
+		lines = lines[:targetLines]
 	}
 
-	return strings.Join(lines[:maxLines], "\n")
+	for len(lines) < targetLines {
+		lines = append(lines, "")
+	}
+
+	return strings.Join(lines, "\n")
 }

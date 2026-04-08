@@ -92,6 +92,11 @@ func (p *Panel) View() string {
 
 	visible := lines[p.Offset:end]
 
+	// Pad to exactly p.Height lines to prevent overflow.
+	for len(visible) < p.Height {
+		visible = append(visible, "")
+	}
+
 	return strings.Join(visible, "\n")
 }
 
@@ -116,8 +121,24 @@ func (p *Panel) buildLines() []string {
 
 	var lines []string
 
+	// maxVal is the maximum visible width for a value after the label.
+	maxVal := max(p.Width-18, 10) //nolint:mnd // 2 indent + ~14 label + 2 gap
+
+	elide := func(s string, maxW int) string {
+		// Take first line only, then truncate.
+		if idx := strings.IndexByte(s, '\n'); idx >= 0 {
+			s = s[:idx]
+		}
+
+		if len(s) > maxW && maxW > 3 { //nolint:mnd // room for ellipsis
+			return s[:maxW-1] + "\u2026"
+		}
+
+		return s
+	}
+
 	line := func(label, value string) {
-		lines = append(lines, fmt.Sprintf("  %s  %s", labelStyle.Render(label), valStyle.Render(value)))
+		lines = append(lines, fmt.Sprintf("  %s  %s", labelStyle.Render(label), valStyle.Render(elide(value, maxVal))))
 	}
 
 	// Path.
@@ -132,20 +153,13 @@ func (p *Panel) buildLines() []string {
 		if p.GitHubEnabled {
 			line("GitHub:", "☑ enabled")
 		} else {
-			line("GitHub:", dimStyle.Render("☐ disabled")+dimStyle.Render("  (set GH_TOKEN to enable)"))
+			line("GitHub:", dimStyle.Render("☐ disabled")+" "+dimStyle.Render("(set GH_TOKEN)"))
 		}
 	}
 
 	// Remote status (shown when fetch failed).
 	if info.FetchErr != nil {
-		lines = append(
-			lines,
-			"  "+
-				labelStyle.Render("Remote:")+
-				" "+
-				warnStyle.Render(fmt.Sprintf("unavailable — %v", info.FetchErr))+
-				" ",
-		)
+		line("Remote:", warnStyle.Render(elide(fmt.Sprintf("unavailable — %v", info.FetchErr), maxVal)))
 	}
 
 	// Non-git directory: show minimal info.
@@ -153,14 +167,14 @@ func (p *Panel) buildLines() []string {
 		return lines
 	}
 
-	// Last commit.
+	// Last commit: date on the label line, message on its own line.
 	if !info.LastCommit.IsZero() {
-		commitLine := info.LastCommit.Format("2006-01-02 15:04")
-		if info.LastCommitMessage != "" {
-			commitLine += "  " + dimStyle.Render(info.LastCommitMessage)
-		}
+		line("Last commit:", info.LastCommit.Format("2006-01-02 15:04"))
 
-		line("Last commit:", commitLine)
+		if info.LastCommitMessage != "" {
+			msg := elide(info.LastCommitMessage, p.Width-6) //nolint:mnd // indent
+			lines = append(lines, "    "+dimStyle.Render(msg))
+		}
 	}
 
 	// Last local update (differs from last commit when worktree is dirty).
@@ -174,7 +188,7 @@ func (p *Panel) buildLines() []string {
 		branch = "(detached HEAD)"
 	}
 
-	line("Branch:", branch)
+	line("Branch:", elide(branch, maxVal))
 
 	// Default branch.
 	if info.DefaultBranch != "" {
@@ -183,7 +197,7 @@ func (p *Panel) buildLines() []string {
 
 	// HEAD.
 	oid := info.Status.OID
-	if len(oid) > 10 {
+	if len(oid) > 10 { //nolint:mnd // short hash
 		oid = oid[:10]
 	}
 
@@ -196,7 +210,7 @@ func (p *Panel) buildLines() []string {
 			upstream += fmt.Sprintf("  (ahead %d, behind %d)", info.Status.Ahead, info.Status.Behind)
 		}
 
-		line("Upstream:", upstream)
+		line("Upstream:", elide(upstream, maxVal))
 	} else {
 		line("Upstream:", dimStyle.Render("(none)"))
 	}
@@ -218,7 +232,7 @@ func (p *Panel) buildLines() []string {
 			counts = append(counts, fmt.Sprintf("%d untracked", untracked))
 		}
 
-		line("Working tree:", warnStyle.Render("dirty")+dimStyle.Render("  ("+strings.Join(counts, ", ")+")"))
+		line("Working tree:", warnStyle.Render("dirty")+" "+dimStyle.Render("("+strings.Join(counts, ", ")+")"))
 	} else {
 		line("Working tree:", "clean")
 	}
@@ -232,10 +246,12 @@ func (p *Panel) buildLines() []string {
 		lines = append(lines, "")
 		lines = append(lines, "  "+labelStyle.Render("Remotes:"))
 
+		maxURL := max(p.Width-16, 10) //nolint:mnd // indent + remote name
+
 		for _, rm := range info.Remotes {
 			lines = append(lines, fmt.Sprintf("    %s  %s",
 				valStyle.Render(rm.Name),
-				dimStyle.Render(rm.FetchURL),
+				dimStyle.Render(elide(rm.FetchURL, maxURL)),
 			))
 		}
 	}
