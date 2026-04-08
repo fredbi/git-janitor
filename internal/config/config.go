@@ -42,6 +42,36 @@ type Config struct {
 	// from the TUI by pressing Ctrl+K. These are global defaults; per-root
 	// overrides may be set in [RootConfig.QuickActions] and merge by name.
 	QuickActions []QuickActionConfig `mapstructure:"quick-actions,omitempty"`
+
+	// Agent controls the AI agent backend (CLI subprocess).
+	Agent AgentConfig
+}
+
+// AgentConfig controls the AI agent backend.
+type AgentConfig struct {
+	// Enabled controls whether agent actions are available.
+	Enabled bool
+
+	// Command is the CLI command to invoke (e.g. ["claude"]).
+	Command []string
+
+	// Model is a model hint passed to the agent (e.g. "sonnet", "opus").
+	Model string
+
+	// Timeout is the maximum execution time for the agent subprocess.
+	Timeout time.Duration
+
+	// Env controls environment variable overrides for the agent subprocess.
+	Env AgentEnvConfig
+}
+
+// AgentEnvConfig controls environment variables for the agent subprocess.
+type AgentEnvConfig struct {
+	// Add specifies extra environment variables to set.
+	Add map[string]string `mapstructure:",omitempty"`
+
+	// Remove lists environment variables to strip from the subprocess.
+	Remove []string `mapstructure:",omitempty"`
 }
 
 // GitHubConfig controls GitHub API integration.

@@ -131,6 +131,13 @@ type ActivityDataMsg struct {
 	Info *models.RepoInfo
 }
 
+// AgentPromptMsg is sent when an agent action's dry-run returns the prompt.
+// The UX shows it in a Detail popup for review before execution.
+type AgentPromptMsg struct {
+	Prompt string                // the generated prompt for review
+	Action ExecuteActionMsg      // the original action to execute on confirmation
+}
+
 // GitHubInfoMsg is sent when background GitHub API fetch completes.
 type GitHubInfoMsg struct {
 	RepoPath string

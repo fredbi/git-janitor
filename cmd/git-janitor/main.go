@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fredbi/git-janitor/internal/config"
+	"github.com/fredbi/git-janitor/internal/agent"
 	"github.com/fredbi/git-janitor/internal/engine"
 	"github.com/fredbi/git-janitor/internal/git"
 	"github.com/fredbi/git-janitor/internal/github"
@@ -73,7 +74,7 @@ func main() {
 
 	// registers all supported actions
 	actions := registry.New[ifaces.Action](
-		registry.With(git.AllActions(), github.AllActions()),
+		registry.With(git.AllActions(), github.AllActions(), agent.AllActions()),
 	)
 
 	// injects all dependencies into the UI model

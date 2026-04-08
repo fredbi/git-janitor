@@ -124,6 +124,7 @@ type ActionKind uint8
 const (
 	ActionKindGit    ActionKind = iota // git CLI action
 	ActionKindGitHub                   // GitHub API action
+	ActionKindAgent                    // AI agent action (CLI subprocess)
 	ActionKindCustom                   // external/custom action (Phase 3)
 )
 

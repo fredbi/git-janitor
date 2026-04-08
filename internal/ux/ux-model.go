@@ -73,6 +73,10 @@ type Model struct {
 	// nil when no confirmation is pending.
 	PendingAction *uxtypes.ExecuteActionMsg
 
+	// PendingAgentAction holds an agent action awaiting confirmation
+	// after prompt review. nil when no agent review is pending.
+	PendingAgentAction *uxtypes.ExecuteActionMsg
+
 	// forceGitHubRefresh is set after action execution to force a GitHub
 	// re-fetch on the next handleRepoInfo cycle (avoids using stale data).
 	forceGitHubRefresh bool
@@ -158,6 +162,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case uxtypes.ActionResultMsg:
 		return m.handleActionResult(msg)
+
+	case uxtypes.AgentPromptMsg:
+		// Show the agent prompt for review. Store the action for execution on confirm.
+		m.Detail.Show("Agent Prompt (Enter: execute, Esc: cancel)", msg.Prompt)
+		m.PendingAgentAction = &msg.Action
+
+		return m, nil
 
 	case uxtypes.ShowDetailMsg:
 		m.Detail.Show(msg.Title, msg.Content)
@@ -423,8 +434,18 @@ func (m *Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key.MsgBinding(msg).ClosePopup() {
 		m.Detail.Hide()
+		m.PendingAgentAction = nil // cancel agent review if pending
 
 		return m, nil
+	}
+
+	// Enter: confirm agent action execution (if a review is pending).
+	if key.MsgBinding(msg) == key.Enter && m.PendingAgentAction != nil {
+		action := *m.PendingAgentAction
+		m.PendingAgentAction = nil
+		m.Detail.Hide()
+
+		return m, m.runAction(action)
 	}
 
 	if key.MsgBinding(msg) == key.C {

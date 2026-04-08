@@ -2,6 +2,15 @@ roots: []
 github:
   enabled: true
   securityAlerts: true
+agent:
+  enabled: false
+  command: ["claude"]
+  model: "sonnet"
+  timeout: 10m
+  env:
+    remove:
+      - GH_TOKEN
+      - GITHUB_TOKEN
 defaults:
   rootConfig:
     scheduleInterval: 5m
@@ -94,6 +103,9 @@ defaults:
       - name: strip-remote-credentials
         auto: false
       - name: rebase-remote-branch
+        auto: false
+      # Agent actions
+      - name: agent-resolve-conflicts
         auto: false
       # Clone management
       - name: delete-local-clone

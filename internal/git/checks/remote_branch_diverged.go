@@ -8,6 +8,7 @@ import (
 	"iter"
 	"strings"
 
+	"github.com/fredbi/git-janitor/internal/agent/prompts"
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
@@ -119,16 +120,86 @@ func (c RemoteBranchDiverged) evaluate(info *models.RepoInfo) (iter.Seq[models.A
 			}
 		}
 
-		// Alert 2: stuck branches (no action — need manual conflict resolution).
+		// Alert 2: stuck branches — suggest AI agent for conflict resolution.
 		if len(stuck) > 0 {
-			if !yield(models.Alert{
+			agentSubjects := buildAgentSubjects(info, stuck)
+
+			alert := models.Alert{
 				CheckName: c.Name(),
 				Severity:  models.SeverityMedium,
 				Summary:   fmt.Sprintf("%d upstream branch(es) diverged with conflicts", len(stuck)),
 				Detail:    "These branches cannot be rebased or merged cleanly: " + subjectsDetail(stuck),
-			}) {
+			}
+
+			if len(agentSubjects) > 0 {
+				alert.Suggestions = []models.ActionSuggestion{{
+					ActionName:  "agent-resolve-conflicts",
+					SubjectKind: models.SubjectBranch,
+					Subjects:    agentSubjects,
+				}}
+			}
+
+			if !yield(alert) {
 				return
 			}
 		}
 	}, nil
+}
+
+// buildAgentSubjects creates ActionSubjects with conflict info in Params
+// for each stuck branch. The agent action reads these to build its prompt.
+func buildAgentSubjects(info *models.RepoInfo, stuck []models.ActionSubject) []models.ActionSubject {
+	branchByName := make(map[string]models.Branch, len(info.Branches))
+	for _, b := range info.Branches {
+		branchByName[b.Name] = b
+	}
+
+	// Detect language from go.mod presence.
+	language := ""
+	for _, b := range info.Branches {
+		if !b.IsRemote && b.Name == info.DefaultBranch {
+			// Heuristic: if the repo has go.mod, it's a Go project.
+			// This is approximate — the actual file check happens at action time.
+			language = "go" // TODO: detect more robustly
+
+			break
+		}
+	}
+
+	var subjects []models.ActionSubject
+
+	for _, s := range stuck {
+		b, ok := branchByName[s.Subject]
+		if !ok {
+			continue
+		}
+
+		// Build conflict file list from MergeCheck or RebaseCheck.
+		var conflictFiles []prompts.ConflictFile
+
+		if b.MergeCheck != nil {
+			for _, f := range b.MergeCheck.Conflicts {
+				conflictFiles = append(conflictFiles, prompts.ConflictFile{Path: f})
+			}
+		}
+
+		if b.RebaseCheck != nil && len(conflictFiles) == 0 {
+			for _, f := range b.RebaseCheck.Conflicts {
+				conflictFiles = append(conflictFiles, prompts.ConflictFile{Path: f})
+			}
+		}
+
+		conflictInfo := prompts.ConflictInfo{
+			Files:       conflictFiles,
+			Language:    language,
+			CommitCount: 0, // unknown at check time
+		}
+
+		subjects = append(subjects, models.ActionSubject{
+			Subject: s.Subject,
+			Params:  []string{info.DefaultBranch, prompts.EncodeConflictInfo(conflictInfo)},
+		})
+	}
+
+	return subjects
 }

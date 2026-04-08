@@ -21,6 +21,11 @@ func (m *Model) handleExecuteAction(msg uxtypes.ExecuteActionMsg) (tea.Model, te
 		return m, nil
 	}
 
+	// Agent actions: do a dry-run first to show the prompt for review.
+	if action.Kind() == models.ActionKindAgent {
+		return m, m.agentDryRun(msg)
+	}
+
 	// Check if confirmation is needed.
 	needsConfirm := action.Destructive() || !m.Cfg.IsActionAuto(msg.ActionName)
 	if needsConfirm {
@@ -38,6 +43,42 @@ func (m *Model) handleExecuteAction(msg uxtypes.ExecuteActionMsg) (tea.Model, te
 	}
 
 	return m, m.runAction(msg)
+}
+
+// agentDryRun runs an agent action in dry-run mode to generate the prompt.
+func (m *Model) agentDryRun(msg uxtypes.ExecuteActionMsg) tea.Cmd {
+	info := m.LastRepoInfo
+
+	// Add "dry-run" flag to the last subject's params.
+	subjects := make([]models.ActionSubject, len(msg.Subjects))
+	copy(subjects, msg.Subjects)
+
+	if len(subjects) > 0 {
+		last := &subjects[len(subjects)-1]
+		last.Params = append(last.Params, "dry-run")
+	}
+
+	dryRunAction := models.ActionSuggestion{
+		ActionName: msg.ActionName,
+		Subjects:   subjects,
+	}
+
+	return func() tea.Msg {
+		result, err := m.Engine.Execute(context.Background(), info, dryRunAction)
+		if err != nil {
+			return uxtypes.ActionResultMsg{
+				RepoPath:   msg.RepoPath,
+				ActionName: msg.ActionName,
+				OK:         false,
+				Message:    err.Error(),
+			}
+		}
+
+		return uxtypes.AgentPromptMsg{
+			Prompt: result.Message,
+			Action: msg,
+		}
+	}
 }
 
 // runAction executes an action in a background tea.Cmd.

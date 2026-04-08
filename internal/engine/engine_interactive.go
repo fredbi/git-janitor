@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	agentbackend "github.com/fredbi/git-janitor/internal/agent/backend"
 	"github.com/fredbi/git-janitor/internal/config"
 	gitbackend "github.com/fredbi/git-janitor/internal/git/backend"
 	githubbackend "github.com/fredbi/git-janitor/internal/github/backend"
@@ -322,6 +323,8 @@ func (e *Interactive) ProviderEnabled(provider string) bool {
 		client := e.getGitHubClient()
 
 		return client != nil && client.Available()
+	case "agent":
+		return e.cfg.Agent.Enabled && len(e.cfg.Agent.Command) > 0
 	default:
 		return false
 	}
@@ -457,6 +460,15 @@ func (e *Interactive) withRunnerForAction(ctx context.Context, action ifaces.Act
 		}
 
 		runner := &githubbackend.Runner{Client: client}
+
+		return ifaces.WithRunner(ctx, runner), nil
+
+	case models.ActionKindAgent:
+		if !e.cfg.Agent.Enabled {
+			return ctx, fmt.Errorf("engine: agent not configured — enable in config (agent.enabled: true)")
+		}
+
+		runner := agentbackend.NewRunner(e.cfg.Agent, info.Path)
 
 		return ifaces.WithRunner(ctx, runner), nil
 
