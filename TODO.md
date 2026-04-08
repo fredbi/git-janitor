@@ -40,8 +40,7 @@ Improvements:
 * forks: check already merged remote on upstream
 * new git action: delete stash
 * test case with multiple worktrees
-* activity pagination glitches
-* check branch to delete: if current branch can be deleted, switch to default first
+* [x] check branch to delete: if current branch can be deleted, switch to default first
 
 ## history
 

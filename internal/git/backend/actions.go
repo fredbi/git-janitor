@@ -159,12 +159,26 @@ func (r *Runner) RenameRemote(ctx context.Context, oldName, newName string) mode
 // by the safe -d flag. The caller should verify the branch is merged
 // before calling this.
 //
-// Refuses to delete the current branch.
-func (r *Runner) DeleteBranch(ctx context.Context, name string) models.ActionResult {
-	// Guard: refuse to delete the current branch.
+// If the branch is currently checked out, the worktree is clean, and a
+// default branch is provided, it switches to the default branch first
+// before deleting.
+func (r *Runner) DeleteBranch(ctx context.Context, name, defaultBranch string) models.ActionResult {
 	current, err := r.run(ctx, cmdRevParseAbbrev("HEAD")...)
 	if err == nil && strings.TrimSpace(current) == name {
-		return models.ActionResult{Message: "cannot delete current branch " + name}
+		// Current branch — try to switch to default branch first.
+		if defaultBranch == "" || defaultBranch == name {
+			return models.ActionResult{Message: "cannot delete current branch " + name + " (no default branch to switch to)"}
+		}
+
+		if result := r.guardClean(ctx); result != nil {
+			return models.ActionResult{Message: "cannot delete current branch " + name + ": " + result.Message}
+		}
+
+		if _, switchErr := r.run(ctx, cmdCheckout(defaultBranch)...); switchErr != nil {
+			return models.ActionResult{
+				Message: fmt.Sprintf("cannot switch to %s before deleting %s: %v", defaultBranch, name, switchErr),
+			}
+		}
 	}
 
 	_, err = r.run(ctx, cmdDeleteBranch(name)...)

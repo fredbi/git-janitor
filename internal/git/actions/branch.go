@@ -36,11 +36,11 @@ func (a DeleteBranch) Execute(ctx context.Context, info *models.RepoInfo, subjec
 	return a.execute(ctx, runner, info, subjects)
 }
 
-func (a DeleteBranch) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, subjects []string) (models.Result, error) {
+func (a DeleteBranch) execute(ctx context.Context, r *backend.Runner, info *models.RepoInfo, subjects []string) (models.Result, error) {
 	for _, name := range subjects {
-		result := r.DeleteBranch(ctx, name)
+		result := r.DeleteBranch(ctx, name, info.DefaultBranch)
 		if !result.OK {
-			return models.Result{OK: false, Message: result.Message}, nil
+			return result.ToResult(), nil
 		}
 	}
 
