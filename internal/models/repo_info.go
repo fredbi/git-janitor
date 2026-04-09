@@ -86,6 +86,22 @@ func NoGit(pth string) *RepoInfo {
 	}
 }
 
+// DefaultBranchHash returns the commit hash of the default branch,
+// or an empty string if the default branch is not found.
+func (r *RepoInfo) DefaultBranchHash() string {
+	if r == nil {
+		return ""
+	}
+
+	for _, b := range r.Branches {
+		if !b.IsRemote && b.Name == r.DefaultBranch {
+			return b.Hash
+		}
+	}
+
+	return ""
+}
+
 // IsEmpty reports whether the RepoInfo has no data.
 func (r *RepoInfo) IsEmpty() bool {
 	return r == nil || !r.IsGit

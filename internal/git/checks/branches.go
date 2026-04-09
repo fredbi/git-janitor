@@ -84,11 +84,23 @@ func (c BranchMergedNotDeleted) Evaluate(_ context.Context, info *models.RepoInf
 
 func (c BranchMergedNotDeleted) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	subjects := filterBranches(info, func(b models.Branch) bool {
-		if !b.IsRemote && b.Merged && b.Name != info.DefaultBranch {
-			return true
+		if b.IsRemote || !b.Merged || b.Name == info.DefaultBranch {
+			return false
 		}
 
-		return false
+		// Skip branches with no commits of their own (new empty branch
+		// points at the same commit as default — git considers it "merged").
+		if b.Hash != "" && info.DefaultBranchHash() == b.Hash {
+			return false
+		}
+
+		// Skip the current branch if the worktree is dirty — this is
+		// likely a new working branch that hasn't been pushed yet.
+		if b.IsCurrent && info.Status.IsDirty() {
+			return false
+		}
+
+		return true
 	})
 
 	if len(subjects) == 0 {
@@ -327,5 +339,72 @@ func (c BranchNotMergeable) evaluate(info *models.RepoInfo) (iter.Seq[models.Ale
 		Severity:  models.SeverityMedium,
 		Summary:   fmt.Sprintf("%d branch(es) cannot be merged or rebased", len(subjects)),
 		Detail:    "manual conflict resolution needed: " + subjectsDetail(subjects),
+	}), nil
+}
+
+// BranchEmpty detects local branches that have no commits of their own
+// (same tip as the default branch), are not the current branch, and have
+// no stash attached. These are safe to delete.
+type BranchEmpty struct {
+	gitCheck
+}
+
+func NewBranchEmpty() BranchEmpty {
+	return BranchEmpty{
+		gitCheck: gitCheck{
+			Describer: models.NewDescriber(
+				"branch-empty",
+				"detects local branches with no commits of their own",
+			),
+		},
+	}
+}
+
+func (c BranchEmpty) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	return c.evaluate(info)
+}
+
+func (c BranchEmpty) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	defaultHash := info.DefaultBranchHash()
+	if defaultHash == "" {
+		return noAlert(c.Name())
+	}
+
+	// Build a set of branch names that have stashes attached.
+	stashedBranches := make(map[string]bool, len(info.Stashes))
+	for _, s := range info.Stashes {
+		stashedBranches[s.Branch] = true
+	}
+
+	subjects := filterBranches(info, func(b models.Branch) bool {
+		if b.IsRemote || b.IsCurrent || b.Name == info.DefaultBranch {
+			return false
+		}
+
+		// Only flag branches whose tip matches the default branch (no own commits).
+		if b.Hash == "" || b.Hash != defaultHash {
+			return false
+		}
+
+		// Skip if the branch has stashes — the user may have work parked there.
+		if stashedBranches[b.Name] {
+			return false
+		}
+
+		return true
+	})
+
+	if len(subjects) == 0 {
+		return noAlert(c.Name())
+	}
+
+	suggestion := branchSuggestion("delete-branch", subjects)
+
+	return singleAlert(models.Alert{
+		CheckName:   c.Name(),
+		Severity:    models.SeverityLow,
+		Summary:     fmt.Sprintf("%d empty branch(es) can be deleted", len(subjects)),
+		Detail:      strings.Join(suggestion.SubjectNames(), ", "),
+		Suggestions: []models.ActionSuggestion{suggestion},
 	}), nil
 }

@@ -22,6 +22,7 @@ func AllChecks() iter.Seq[ifaces.Check] {
 		checks.NewBranchNoUpstream(),
 		checks.NewBranchDiverged(),
 		checks.NewBranchNotMergeable(),
+		checks.NewBranchEmpty(),
 		checks.NewRemoteNoOrigin(),
 		checks.NewRemoteMisnamedUpstream(),
 		checks.NewTagsLocalOnly(),

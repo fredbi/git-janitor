@@ -14,6 +14,7 @@ defaults:
       - name: branch-no-upstream
       - name: branch-diverged
       - name: branch-not-mergeable
+      - name: branch-empty
       # Worktree
       - name: dirty-worktree
       # Health & maintenance
