@@ -4,6 +4,7 @@ package scan
 
 import (
 	"fmt"
+	"sort"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fredbi/git-janitor/internal/config"
@@ -14,6 +15,11 @@ import (
 
 // Roots walks all configured roots and returns discovered git repositories,
 // grouped by root index.
+//
+// Each root's discovery depth is taken from its [config.RootConfig.MaxDepth]
+// setting (via [config.Config.RootMaxDepth]). Results are sorted by their
+// [models.RepoItem.DisplayKey] so siblings cluster together regardless of
+// the underlying directory order.
 //
 // This runs as a tea.Cmd so it doesn't block the UI.
 func Roots(cfg *config.Config) tea.Cmd {
@@ -26,19 +32,14 @@ func Roots(cfg *config.Config) tea.Cmd {
 		total := 0
 
 		for i, root := range cfg.Roots {
-			discovered, err := fs.DiscoverRepos(root.Path)
+			items, err := fs.DiscoverReposDepth(root.Path, cfg.RootMaxDepth(i))
 			if err != nil {
 				return uxtypes.ScanResultMsg{Err: fmt.Errorf("scanning %s: %w", root.Path, err)}
 			}
 
-			items := make([]models.RepoItem, len(discovered))
-			for j, d := range discovered {
-				items[j] = models.RepoItem{
-					Name:  d.Name,
-					Path:  d.Path,
-					IsGit: d.IsGit,
-				}
-			}
+			sort.SliceStable(items, func(a, b int) bool {
+				return items[a].DisplayKey() < items[b].DisplayKey()
+			})
 
 			byRoot[i] = items
 			total += len(items)

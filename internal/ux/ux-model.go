@@ -692,8 +692,7 @@ func (m *Model) handleScanResult(msg uxtypes.ScanResultMsg) (tea.Model, tea.Cmd)
 	total := 0
 
 	for rootIdx, repoItems := range msg.ReposByRoot {
-		items := repos.RepoItemsToListItems(repoItems)
-		if cmd := m.Repos.SetRootItems(rootIdx, items); cmd != nil {
+		if cmd := m.Repos.SetRootItems(rootIdx, repoItems); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 

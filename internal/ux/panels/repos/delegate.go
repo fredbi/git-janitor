@@ -3,6 +3,7 @@ package repos
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,8 +12,14 @@ import (
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
+// indentStep is the number of spaces a single level of nesting adds to
+// the rendered row, both for namespace headers and for repo entries
+// living below them.
+const indentStep = 2
+
 // RepoDelegate is a custom list delegate that highlights non-git items
-// using the current theme's NotGit color.
+// using the current theme's NotGit color and renders namespace headers
+// and indented repo rows for nested layouts.
 type RepoDelegate struct {
 	Theme *uxtypes.Theme
 	Base  list.DefaultDelegate
@@ -37,37 +44,78 @@ func (d RepoDelegate) Spacing() int                              { return d.Base
 func (d RepoDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return d.Base.Update(msg, m) }
 
 func (d RepoDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
-	repo, ok := item.(models.RepoItem)
-	if !ok || repo.IsGit {
-		d.Base.Render(w, m, index, item)
+	switch v := item.(type) {
+	case groupHeaderItem:
+		d.renderHeader(w, v)
+
+		return
+
+	case models.RepoItem:
+		if v.Namespace == "" && v.IsGit {
+			// Top-level git repo: keep the bubbles default rendering so
+			// pre-nesting users see the same panel they're used to.
+			d.Base.Render(w, m, index, item)
+
+			return
+		}
+
+		d.renderRepo(w, m, index, v)
 
 		return
 	}
+}
 
+// renderHeader paints a non-selectable namespace header row in the dim
+// theme color, indented by the header's depth.
+func (d RepoDelegate) renderHeader(w io.Writer, h groupHeaderItem) {
+	indent := strings.Repeat(" ", h.Depth*indentStep)
+	style := lipgloss.NewStyle().
+		Foreground(d.Theme.Dim).
+		Padding(0, 0, 0, indentStep)
+
+	fmt.Fprintf(w, "%s\n", style.Render(indent+h.Name+"/"))
+}
+
+// renderRepo paints a repository row, indenting it by its [models.RepoItem.Depth]
+// so it visually nests under its namespace headers.
+func (d RepoDelegate) renderRepo(w io.Writer, m list.Model, index int, repo models.RepoItem) {
 	t := d.Theme
 	isSelected := index == m.Index()
 
+	titleColor := t.Text
+	if !repo.IsGit {
+		titleColor = t.NotGit
+	}
+
+	leftPad := indentStep + repo.Depth()*indentStep
+
 	titleStyle := lipgloss.NewStyle().
-		Foreground(t.NotGit).
-		Padding(0, 0, 0, 2)
+		Foreground(titleColor).
+		Padding(0, 0, 0, leftPad)
 
 	descStyle := lipgloss.NewStyle().
 		Foreground(t.Dim).
-		Padding(0, 0, 0, 2)
+		Padding(0, 0, 0, leftPad)
 
 	if isSelected {
+		borderColor := t.Accent
+		if !repo.IsGit {
+			borderColor = t.NotGit
+		}
+
 		titleStyle = titleStyle.
 			Bold(true).
+			Foreground(borderColor).
 			BorderLeft(true).
 			BorderStyle(lipgloss.ThickBorder()).
-			BorderForeground(t.NotGit).
-			Padding(0, 0, 0, 1)
+			BorderForeground(borderColor).
+			Padding(0, 0, 0, leftPad-1)
 
 		descStyle = descStyle.
 			BorderLeft(true).
 			BorderStyle(lipgloss.ThickBorder()).
-			BorderForeground(t.NotGit).
-			Padding(0, 0, 0, 1)
+			BorderForeground(borderColor).
+			Padding(0, 0, 0, leftPad-1)
 	}
 
 	title := titleStyle.Render(repo.Title())

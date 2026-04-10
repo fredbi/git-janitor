@@ -68,6 +68,15 @@ type RootConfig struct {
 	// for stale branches, etc.
 	ScheduleInterval time.Duration
 
+	// MaxDepth caps how many directory levels the discovery walker
+	// descends from the root. Use 1 for a flat layout (GitHub-style
+	// owner/repo siblings — the legacy behavior), higher values for
+	// nested layouts (GitLab-style group/subgroup/repo). A negative
+	// value means unlimited (subject to a built-in safety cap).
+	//
+	// The zero value resolves to [DefaultMaxDepth] via [Config.RootMaxDepth].
+	MaxDepth int `mapstructure:"maxDepth,omitempty"`
+
 	// Rules overrides the default rules for this root.
 	// Only the Disable field is used — checks listed here are
 	// removed from the defaults.
@@ -77,6 +86,11 @@ type RootConfig struct {
 	// nil means inherit the global default.
 	GitHub *GitHubConfig `mapstructure:",omitempty"`
 }
+
+// DefaultMaxDepth is the depth used when a root does not set MaxDepth
+// explicitly. It is shallow enough to be cheap on a typical GitLab tree
+// (group/subgroup/repo) yet still surfaces nested layouts out of the box.
+const DefaultMaxDepth = 4
 
 // RulesConfig defines which checks and actions are enabled by default.
 type RulesConfig struct {
@@ -443,8 +457,9 @@ func rootDisplayName(r LocalRoot) string {
 // AddRoot appends a new root directory to the configuration.
 //
 // If name is empty it defaults to the base name of path (e.g.
-// "/home/dev/projects" → "projects"). After insertion the roots slice is
-// resorted and the final index of the new root is returned.
+// "/home/dev/projects" → "projects"). MaxDepth is initialized to
+// [DefaultMaxDepth] so the YAML round-trip is stable. After insertion the
+// roots slice is resorted and the final index of the new root is returned.
 func (c *Config) AddRoot(name, path string, interval time.Duration) int {
 	if name == "" {
 		name = filepath.Base(path)
@@ -455,6 +470,7 @@ func (c *Config) AddRoot(name, path string, interval time.Duration) int {
 		Path: path,
 		RootConfig: RootConfig{
 			ScheduleInterval: interval,
+			MaxDepth:         DefaultMaxDepth,
 		},
 	})
 
@@ -535,6 +551,36 @@ func (c *Config) UpdateRootInterval(index int, interval time.Duration) bool {
 	c.Roots[index].RootConfig.ScheduleInterval = interval
 
 	return true
+}
+
+// UpdateRootMaxDepth changes the discovery max depth of the root at the
+// given index. It returns false if the index is out of range.
+func (c *Config) UpdateRootMaxDepth(index int, depth int) bool {
+	if index < 0 || index >= len(c.Roots) {
+		return false
+	}
+
+	c.Roots[index].RootConfig.MaxDepth = depth
+
+	return true
+}
+
+// RootMaxDepth returns the effective discovery depth for the root at the
+// given index. A zero (or negative) configured value resolves to
+// [DefaultMaxDepth] when zero, or "unlimited" (signaled to the walker by
+// passing the original negative value) when negative. Out-of-range indices
+// return [DefaultMaxDepth].
+func (c *Config) RootMaxDepth(index int) int {
+	if index < 0 || index >= len(c.Roots) {
+		return DefaultMaxDepth
+	}
+
+	d := c.Roots[index].RootConfig.MaxDepth
+	if d == 0 {
+		return DefaultMaxDepth
+	}
+
+	return d
 }
 
 // EncodeYAML serializes the configuration as YAML into the provided writer.

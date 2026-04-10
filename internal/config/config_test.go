@@ -221,6 +221,69 @@ func TestUpdateRootName(t *testing.T) {
 	}
 }
 
+func TestRootMaxDepth_DefaultsWhenZero(t *testing.T) {
+	cfg := &Config{}
+	cfg.Roots = []LocalRoot{
+		{Path: "/p/a", RootConfig: RootConfig{MaxDepth: 0}},  // unset → default
+		{Path: "/p/b", RootConfig: RootConfig{MaxDepth: 1}},  // explicit flat
+		{Path: "/p/c", RootConfig: RootConfig{MaxDepth: -1}}, // explicit unlimited
+	}
+
+	if got := cfg.RootMaxDepth(0); got != DefaultMaxDepth {
+		t.Errorf("RootMaxDepth(0) = %d, want %d", got, DefaultMaxDepth)
+	}
+	if got := cfg.RootMaxDepth(1); got != 1 {
+		t.Errorf("RootMaxDepth(1) = %d, want 1", got)
+	}
+	if got := cfg.RootMaxDepth(2); got != -1 {
+		t.Errorf("RootMaxDepth(2) = %d, want -1", got)
+	}
+	if got := cfg.RootMaxDepth(99); got != DefaultMaxDepth {
+		t.Errorf("RootMaxDepth(out-of-range) = %d, want %d", got, DefaultMaxDepth)
+	}
+}
+
+func TestUpdateRootMaxDepth(t *testing.T) {
+	cfg := &Config{}
+	cfg.AddRoot("a", "/p/a", time.Minute)
+
+	// AddRoot must initialize MaxDepth to DefaultMaxDepth.
+	if got := cfg.Roots[0].RootConfig.MaxDepth; got != DefaultMaxDepth {
+		t.Errorf("AddRoot left MaxDepth = %d, want %d", got, DefaultMaxDepth)
+	}
+
+	if !cfg.UpdateRootMaxDepth(0, 2) {
+		t.Fatal("UpdateRootMaxDepth returned false")
+	}
+	if got := cfg.Roots[0].RootConfig.MaxDepth; got != 2 {
+		t.Errorf("MaxDepth after update = %d, want 2", got)
+	}
+
+	if cfg.UpdateRootMaxDepth(99, 3) {
+		t.Error("UpdateRootMaxDepth(99) should return false for out-of-range index")
+	}
+}
+
+func TestRoundTrip_MaxDepth(t *testing.T) {
+	original := &Config{}
+	original.AddRoot("alpha", "/p/a", time.Minute)
+	original.UpdateRootMaxDepth(0, 3)
+
+	var buf bytes.Buffer
+	if err := original.EncodeYAML(&buf); err != nil {
+		t.Fatalf("EncodeYAML: %v", err)
+	}
+
+	restored := &Config{}
+	if _, err := load(fakeFS(buf.String()), "config.yaml", restored); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	if got := restored.Roots[0].RootConfig.MaxDepth; got != 3 {
+		t.Errorf("round-tripped MaxDepth = %d, want 3", got)
+	}
+}
+
 func TestSortRoots_Alphabetical(t *testing.T) {
 	cfg := &Config{}
 

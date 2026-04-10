@@ -9,13 +9,40 @@ import (
 	"github.com/fredbi/git-janitor/internal/models"
 )
 
+// maxRecursionDepth is the absolute hard cap on directory recursion,
+// independent of any user-supplied MaxDepth value. It guards against
+// runaway scans of pathological directory layouts.
+const maxRecursionDepth = 16
+
 // DiscoverRepos walks dir looking for first-level subdirectories.
 //
-// Each subdirectory is listed as a RepoItem. Directories containing a .git
-// subdirectory have IsGit set to true; others are listed with IsGit=false.
-//
-// Hidden directories and common noise directories are skipped.
+// It is a thin compatibility wrapper around [DiscoverReposDepth] with
+// maxDepth=1 — preserving the legacy GitHub-style flat behavior. New
+// callers should use [DiscoverReposDepth] directly.
 func DiscoverRepos(dir string) ([]models.RepoItem, error) {
+	return DiscoverReposDepth(dir, 1)
+}
+
+// DiscoverReposDepth walks dir looking for git repositories up to
+// maxDepth levels deep.
+//
+// At depth=1 the behavior matches the legacy [DiscoverRepos]: every
+// first-level subdirectory is listed (git or not), so the user can see
+// non-git noise sitting next to their repos. For depth>1 the walker
+// only emits leaves that are actual git repositories — non-git
+// intermediate directories are traversed but not surfaced.
+//
+// A repository's Namespace is the slash-separated relative parent
+// directory from dir ("" for top-level repos, "group/sub" when nested).
+//
+// maxDepth semantics:
+//   - 1   → flat layout, current GitHub-style behavior
+//   - >1  → recurse that many levels
+//   - ≤0  → unlimited (still hard-capped at [maxRecursionDepth])
+//
+// Hidden directories, common noise directories ([ShouldSkipDir]),
+// symlinked entries and linked worktrees are all skipped.
+func DiscoverReposDepth(dir string, maxDepth int) ([]models.RepoItem, error) {
 	dir, err := ExpandHome(dir)
 	if err != nil {
 		return nil, err
@@ -36,15 +63,41 @@ func DiscoverRepos(dir string) ([]models.RepoItem, error) {
 		}}, nil
 	}
 
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	effectiveDepth := maxDepth
+	if effectiveDepth <= 0 || effectiveDepth > maxRecursionDepth {
+		effectiveDepth = maxRecursionDepth
+	}
+
+	// Flat mode preserves the legacy behavior of surfacing non-git
+	// top-level subdirectories so the user notices stray directories
+	// sitting next to their repos. In nested modes the namespace-aware
+	// child entries already give that context, so we suppress them.
+	emitNonGitTop := maxDepth == 1
+
+	var repos []models.RepoItem
+	if err := walkRepos(dir, dir, 1, effectiveDepth, emitNonGitTop, &repos); err != nil {
 		return nil, err
 	}
 
-	var repos []models.RepoItem
+	return repos, nil
+}
+
+// walkRepos descends current looking for git repositories. depth is the
+// 1-based level of the current directory under root. The recursion stops
+// once it has produced repos from level == maxDepth. When emitNonGitTop
+// is true, top-level (depth == 1) non-git subdirectories are also
+// surfaced as non-git RepoItems — used by flat mode for parity with the
+// legacy [DiscoverRepos] behavior.
+func walkRepos(root, current string, depth, maxDepth int, emitNonGitTop bool, out *[]models.RepoItem) error {
+	entries, err := os.ReadDir(current)
+	if err != nil {
+		return err
+	}
 
 	for _, d := range entries {
-		if !d.IsDir() {
+		// Skip non-directories and any kind of symlink (loops, escapes).
+		t := d.Type()
+		if !t.IsDir() || t&os.ModeSymlink != 0 {
 			continue
 		}
 
@@ -59,7 +112,7 @@ func DiscoverRepos(dir string) ([]models.RepoItem, error) {
 			continue
 		}
 
-		path := filepath.Join(dir, name)
+		path := filepath.Join(current, name)
 
 		// Skip linked worktrees — they appear under their parent repo's
 		// worktree list and should not be listed as independent repos.
@@ -67,14 +120,49 @@ func DiscoverRepos(dir string) ([]models.RepoItem, error) {
 			continue
 		}
 
-		repos = append(repos, models.RepoItem{
-			Name:  name,
-			Path:  path,
-			IsGit: IsGitDir(path),
-		})
+		if IsGitDir(path) {
+			// Real git repository: emit and stop descending into it.
+			*out = append(*out, models.RepoItem{
+				Name:      name,
+				Path:      path,
+				Namespace: namespaceFor(root, path),
+				IsGit:     true,
+			})
+
+			continue
+		}
+
+		if emitNonGitTop && depth == 1 {
+			// Flat-mode parity: surface top-level non-git directories.
+			*out = append(*out, models.RepoItem{
+				Name:  name,
+				Path:  path,
+				IsGit: false,
+			})
+		}
+
+		// Recurse if there is room.
+		if depth < maxDepth {
+			if err := walkRepos(root, path, depth+1, maxDepth, emitNonGitTop, out); err != nil {
+				return err
+			}
+		}
 	}
 
-	return repos, nil
+	return nil
+}
+
+// namespaceFor returns the slash-separated relative parent path of repo
+// under root, or "" when repo sits directly under root. The result always
+// uses forward slashes regardless of OS so display + filtering stay
+// consistent across platforms.
+func namespaceFor(root, repo string) string {
+	rel, err := filepath.Rel(root, filepath.Dir(repo))
+	if err != nil || rel == "." {
+		return ""
+	}
+
+	return filepath.ToSlash(rel)
 }
 
 // IsGitDir reports whether dir contains a .git subdirectory (a real repository).

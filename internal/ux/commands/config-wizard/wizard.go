@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ const (
 	stepEditPath                 // edit a root's path
 	stepEditName                 // edit a root's display name
 	stepEditInterval             // edit a root's schedule interval
+	stepEditMaxDepth             // edit a root's discovery max depth
 	stepPath                     // enter a new root directory path
 	stepName                     // enter a name for the new root
 	stepInterval                 // enter a schedule interval for the new root
@@ -35,9 +37,10 @@ const (
 const keyEnter = "enter"
 
 const (
-	paneWidth  = 50
-	paneHeight = 14
-	padding    = 8
+	paneWidth       = 50
+	paneHeight      = 14
+	padding         = 8
+	depthInputWidth = 10
 )
 
 // ConfigWizard is a multi-step overlay dialog for editing the configuration.
@@ -50,13 +53,14 @@ const (
 type ConfigWizard struct {
 	Cfg *config.Config // working copy of the config
 
-	PathInput       gadgets.PathAutocomplete // path input for a new root with directory autocompletion
-	NameInput       textinput.Model          // name for a new root
-	IntervalInput   textinput.Model
-	EditInput       textinput.Model          // text input for editing an existing root's interval
-	EditNameInput   textinput.Model          // text input for editing an existing root's name
-	EditPathInput   gadgets.PathAutocomplete // path input for editing an existing root with directory autocompletion
-	EditFieldCursor int                      // cursor within the edit-root field list
+	PathInput         gadgets.PathAutocomplete // path input for a new root with directory autocompletion
+	NameInput         textinput.Model          // name for a new root
+	IntervalInput     textinput.Model
+	EditInput         textinput.Model          // text input for editing an existing root's interval
+	EditNameInput     textinput.Model          // text input for editing an existing root's name
+	EditMaxDepthInput textinput.Model          // text input for editing an existing root's MaxDepth
+	EditPathInput     gadgets.PathAutocomplete // path input for editing an existing root with directory autocompletion
+	EditFieldCursor   int                      // cursor within the edit-root field list
 
 	Step    Step
 	Visible bool
@@ -83,7 +87,7 @@ type ConfigWizard struct {
 }
 
 // editRootFields defines the fields available for editing on a root.
-var editRootFields = []string{"Path", "Name", "Interval", "GitHub", "Security Alerts"} //nolint:gochecknoglobals // wizard field list
+var editRootFields = []string{"Path", "Name", "Interval", "Max Depth", "GitHub", "Security Alerts"} //nolint:gochecknoglobals // wizard field list
 
 // New creates a new ConfigWizard for the given configuration.
 func New(cfg *config.Config) ConfigWizard {
@@ -127,17 +131,24 @@ func New(cfg *config.Config) ConfigWizard {
 	epi.CharLimit = 512
 	epi.Width = paneWidth
 
+	emdi := textinput.New()
+	emdi.Placeholder = strconv.Itoa(config.DefaultMaxDepth)
+	emdi.Prompt = "  Max Depth: "
+	emdi.CharLimit = 4
+	emdi.Width = depthInputWidth
+
 	return ConfigWizard{
-		Cfg:             cfg,
-		PathInput:       gadgets.NewPathAutocomplete(pi),
-		NameInput:       ni,
-		IntervalInput:   ii,
-		EditInput:       ei,
-		EditNameInput:   eni,
-		EditPathInput:   gadgets.NewPathAutocomplete(epi),
-		Step:            stepRoots,
-		DefaultPath:     defPath,
-		DefaultInterval: defInterval,
+		Cfg:               cfg,
+		PathInput:         gadgets.NewPathAutocomplete(pi),
+		NameInput:         ni,
+		IntervalInput:     ii,
+		EditInput:         ei,
+		EditNameInput:     eni,
+		EditMaxDepthInput: emdi,
+		EditPathInput:     gadgets.NewPathAutocomplete(epi),
+		Step:              stepRoots,
+		DefaultPath:       defPath,
+		DefaultInterval:   defInterval,
 	}
 }
 
@@ -192,6 +203,7 @@ func (w *ConfigWizard) SetSize(termWidth, termHeight int) {
 	w.IntervalInput.Width = innerW
 	w.EditInput.Width = innerW
 	w.EditNameInput.Width = innerW
+	w.EditMaxDepthInput.Width = min(depthInputWidth, innerW)
 	w.EditPathInput.SetWidth(innerW)
 }
 
@@ -217,6 +229,8 @@ func (w *ConfigWizard) Update(msg tea.Msg) (tea.Cmd, *uxtypes.ConfigWizardMsg) {
 		w.EditInput, cmd = w.EditInput.Update(msg)
 	case stepEditName:
 		w.EditNameInput, cmd = w.EditNameInput.Update(msg)
+	case stepEditMaxDepth:
+		w.EditMaxDepthInput, cmd = w.EditMaxDepthInput.Update(msg)
 	default:
 	}
 
@@ -248,6 +262,8 @@ func (w *ConfigWizard) View(termWidth, termHeight int) string {
 		w.viewEditName(&content)
 	case stepEditInterval:
 		w.viewEditInterval(&content)
+	case stepEditMaxDepth:
+		w.viewEditMaxDepth(&content)
 	case stepPath:
 		w.viewPath(&content)
 	case stepName:
@@ -292,6 +308,7 @@ func (w *ConfigWizard) blurAll() {
 	w.IntervalInput.Blur()
 	w.EditInput.Blur()
 	w.EditNameInput.Blur()
+	w.EditMaxDepthInput.Blur()
 	w.EditPathInput.Blur()
 }
 
@@ -314,6 +331,8 @@ func (w *ConfigWizard) handleKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWizard
 		return w.handleEditNameKey(msg)
 	case stepEditInterval:
 		return w.handleEditIntervalKey(msg)
+	case stepEditMaxDepth:
+		return w.handleEditMaxDepthKey(msg)
 	case stepPath:
 		return w.handlePathKey(msg)
 	case stepName:
@@ -333,7 +352,7 @@ func (w *ConfigWizard) handleKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWizard
 
 func (w *ConfigWizard) handleEsc() (tea.Cmd, *uxtypes.ConfigWizardMsg) {
 	switch w.Step {
-	case stepEditRoot, stepEditPath, stepEditName, stepEditInterval:
+	case stepEditRoot, stepEditPath, stepEditName, stepEditInterval, stepEditMaxDepth:
 		// Go back to root list without saving the edit.
 		w.Step = stepRoots
 		w.Err = ""
@@ -481,6 +500,13 @@ func (w *ConfigWizard) handleEditRootKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 			w.EditInput.Focus()
 
 			return textinput.Blink, nil
+		case "Max Depth":
+			w.Step = stepEditMaxDepth
+			w.Err = ""
+			w.EditMaxDepthInput.SetValue(strconv.Itoa(w.Cfg.RootMaxDepth(w.EditIndex)))
+			w.EditMaxDepthInput.Focus()
+
+			return textinput.Blink, nil
 		case "GitHub":
 			w.toggleRootGitHub()
 
@@ -565,6 +591,48 @@ func (w *ConfigWizard) handleEditNameKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 	default:
 		var cmd tea.Cmd
 		w.EditNameInput, cmd = w.EditNameInput.Update(msg)
+
+		return cmd, nil
+	}
+}
+
+// handleEditMaxDepthKey handles keyboard input when editing a root's discovery depth.
+func (w *ConfigWizard) handleEditMaxDepthKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWizardMsg) {
+	key := msg.String()
+
+	switch key {
+	case keyEnter:
+		raw := strings.TrimSpace(w.EditMaxDepthInput.Value())
+		if raw == "" {
+			w.Err = "Max Depth cannot be empty."
+
+			return nil, nil
+		}
+
+		d, err := strconv.Atoi(raw)
+		if err != nil {
+			w.Err = fmt.Sprintf("Invalid integer %q.", raw)
+
+			return nil, nil
+		}
+
+		if d < -1 {
+			w.Err = "Max Depth must be -1 (unlimited), 0 (default), or a positive integer."
+
+			return nil, nil
+		}
+
+		w.Cfg.UpdateRootMaxDepth(w.EditIndex, d)
+		w.Dirty = true
+		w.Err = ""
+		w.Step = stepEditRoot
+		w.EditMaxDepthInput.Blur()
+
+		return nil, nil
+
+	default:
+		var cmd tea.Cmd
+		w.EditMaxDepthInput, cmd = w.EditMaxDepthInput.Update(msg)
 
 		return cmd, nil
 	}
@@ -900,6 +968,13 @@ func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {
 		secLabel += inherited
 	}
 
+	depthLabel := strconv.Itoa(w.Cfg.RootMaxDepth(w.EditIndex))
+	if root.RootConfig.MaxDepth == 0 {
+		depthLabel += " (default)"
+	} else if root.RootConfig.MaxDepth < 0 {
+		depthLabel = "unlimited"
+	}
+
 	fields := []struct {
 		label string
 		value string
@@ -907,6 +982,7 @@ func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {
 		{"Path", root.Path},
 		{"Name", w.Cfg.RootDisplayName(w.EditIndex)},
 		{"Interval", root.RootConfig.ScheduleInterval.String()},
+		{"Max Depth", depthLabel},
 		{"GitHub", ghLabel},
 		{"Security Alerts", secLabel},
 	}
@@ -919,7 +995,7 @@ func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {
 			style = selected
 		}
 
-		line := fmt.Sprintf("%s%-10s %s", cursor, f.label+":", f.value)
+		line := fmt.Sprintf("%s%-16s %s", cursor, f.label+":", f.value)
 		content.WriteString(style.Render(line) + "\n")
 	}
 
@@ -927,6 +1003,19 @@ func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {
 
 	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	content.WriteString(hint.Render("  ↑/↓ select   Enter edit/toggle   Esc back") + "\n")
+}
+
+func (w *ConfigWizard) viewEditMaxDepth(content *strings.Builder) {
+	if w.EditIndex < 0 || w.EditIndex >= len(w.Cfg.Roots) {
+		return
+	}
+
+	heading := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
+	content.WriteString(heading.Render("Editing max depth for: "+w.Cfg.RootDisplayName(w.EditIndex)) + "\n\n")
+	content.WriteString("  How many directory levels should the scanner descend?\n")
+	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).
+		Render("    1 = flat (GitHub-style), 4 = default, -1 = unlimited") + "\n\n")
+	content.WriteString(w.EditMaxDepthInput.View() + "\n")
 }
 
 func (w *ConfigWizard) viewEditPath(content *strings.Builder) {

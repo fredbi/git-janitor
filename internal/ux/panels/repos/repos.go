@@ -17,11 +17,28 @@ import (
 )
 
 // RootTab holds one tab's state: the root's display name and its repo list.
+//
+// Repos is the unfiltered, sorted list of repositories scanned for this
+// root. The bubbles list shown in List is rebuilt from Repos by inserting
+// dim group-header rows according to each repo's Namespace.
 type RootTab struct {
-	Name     string
-	List     list.Model
-	AllItems []list.Item // unfiltered items, kept for re-applying the filter
+	Name  string
+	List  list.Model
+	Repos []models.RepoItem // unfiltered, sorted by DisplayKey
 }
+
+// groupHeaderItem is a non-selectable row inserted between siblings in
+// the displayed list to indicate a namespace boundary (e.g. "myorg" or
+// "backend"). It implements [list.Item] but is filtered out by the
+// panel's navigation and selection helpers.
+type groupHeaderItem struct {
+	Name  string
+	Depth int
+}
+
+// FilterValue returns an empty string so the bubbles built-in filter
+// (which we don't use, but contract-wise) ignores headers.
+func (groupHeaderItem) FilterValue() string { return "" }
 
 // Panel is a tabbed left panel where each tab represents a configured root.
 type Panel struct {
@@ -194,11 +211,14 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (p *Panel) handleKey(msg tea.KeyMsg) tea.Cmd {
-	switch key.MsgBinding(msg) {
+	switch binding := key.MsgBinding(msg); binding {
 	case key.Up, key.Down, key.K, key.J, key.PageUp, key.PageDown, key.Home, key.End:
-		// Navigation keys go to the list.
+		// Navigation keys go to the list, then we hop over any header
+		// rows in the direction of movement so the cursor never rests
+		// on a non-selectable row.
 		var cmd tea.Cmd
 		p.Tabs[p.Active].List, cmd = p.Tabs[p.Active].List.Update(msg)
+		p.skipHeaders(navDirection(binding))
 
 		return cmd
 
@@ -262,57 +282,115 @@ func (p *Panel) recompileFilter() {
 	p.FilterErr = false
 }
 
-// applyFilter returns items matching the current filter regexp.
-func (p *Panel) applyFilter(items []list.Item) []list.Item {
-	if p.FilterRe == nil {
+// buildDisplayList turns a sorted slice of repos into a flat slice of
+// list items with dim header rows inserted at every namespace boundary.
+//
+// The input is expected to be sorted by [models.RepoItem.DisplayKey] so
+// siblings are adjacent. Headers are inserted only when present in the
+// tree (`includeHeaders == true`); when filtering, callers pass false to
+// produce a flat hit list.
+func buildDisplayList(repos []models.RepoItem, includeHeaders bool) []list.Item {
+	if len(repos) == 0 {
+		return nil
+	}
+
+	if !includeHeaders {
+		items := make([]list.Item, len(repos))
+		for i, r := range repos {
+			items[i] = r
+		}
+
 		return items
 	}
 
-	var filtered []list.Item
+	// Heuristic capacity: each repo plus on average one header row.
+	const itemsPerRepoEstimate = 2
+	items := make([]list.Item, 0, len(repos)*itemsPerRepoEstimate)
+	var prevSegments []string
 
-	for _, item := range items {
-		repo, ok := item.(models.RepoItem)
-		if !ok {
-			continue
+	for _, r := range repos {
+		var segments []string
+		if r.Namespace != "" {
+			segments = strings.Split(r.Namespace, "/")
 		}
 
-		if p.FilterRe.MatchString(repo.Name) || p.FilterRe.MatchString(repo.Path) {
-			filtered = append(filtered, item)
+		// Find the longest common prefix with the previous segments and
+		// emit a header for every new segment.
+		common := commonPrefixLen(prevSegments, segments)
+		for d := common; d < len(segments); d++ {
+			items = append(items, groupHeaderItem{
+				Name:  segments[d],
+				Depth: d,
+			})
+		}
+
+		items = append(items, r)
+		prevSegments = segments
+	}
+
+	return items
+}
+
+// commonPrefixLen returns the number of leading elements shared by a and b.
+func commonPrefixLen(a, b []string) int {
+	n := min(len(a), len(b))
+	for i := range n {
+		if a[i] != b[i] {
+			return i
 		}
 	}
 
-	return filtered
+	return n
 }
 
-// refilterActive re-applies the filter to the active tab.
+// refilterActive re-applies the filter to the active tab and rebuilds
+// its display list.
 func (p *Panel) refilterActive() {
 	if p.Active < 0 || p.Active >= len(p.Tabs) {
 		return
 	}
 
 	tab := &p.Tabs[p.Active]
-	tab.List.SetItems(p.applyFilter(tab.AllItems))
+	includeHeaders := p.FilterRe == nil
+	tab.List.SetItems(buildDisplayList(p.applyFilter(tab.Repos), includeHeaders))
+	p.skipHeaders(+1)
 }
 
 // RefilterAll re-applies the filter to all tabs.
 func (p *Panel) RefilterAll() {
+	includeHeaders := p.FilterRe == nil
 	for i := range p.Tabs {
-		p.Tabs[i].List.SetItems(p.applyFilter(p.Tabs[i].AllItems))
+		p.Tabs[i].List.SetItems(buildDisplayList(p.applyFilter(p.Tabs[i].Repos), includeHeaders))
 	}
+	p.skipHeaders(+1)
 }
 
 // SetRootItems replaces the repo list for a specific root tab.
-func (p *Panel) SetRootItems(rootIndex int, items []list.Item) tea.Cmd {
+//
+// repos is taken as the source of truth (already sorted by DisplayKey
+// upstream in the scanner). The displayed list is rebuilt from it via
+// [buildDisplayList].
+func (p *Panel) SetRootItems(rootIndex int, repos []models.RepoItem) tea.Cmd {
 	if rootIndex < 0 || rootIndex >= len(p.Tabs) {
 		return nil
 	}
 
-	p.Tabs[rootIndex].AllItems = items
+	tab := &p.Tabs[rootIndex]
+	tab.Repos = repos
+	includeHeaders := p.FilterRe == nil
+	cmd := tab.List.SetItems(buildDisplayList(p.applyFilter(repos), includeHeaders))
 
-	return p.Tabs[rootIndex].List.SetItems(p.applyFilter(items))
+	if rootIndex == p.Active {
+		p.skipHeaders(+1)
+	}
+
+	return cmd
 }
 
 // SelectedRepo returns the currently selected repository in the active tab.
+//
+// Returns (zero, false) when the selection is on a group header row or
+// outside the list.
 func (p *Panel) SelectedRepo() (models.RepoItem, bool) {
 	if p.Active < 0 || p.Active >= len(p.Tabs) {
 		return models.RepoItem{}, false
@@ -326,6 +404,23 @@ func (p *Panel) SelectedRepo() (models.RepoItem, bool) {
 	repo, ok := item.(models.RepoItem)
 
 	return repo, ok
+}
+
+// navDirection maps a navigation key binding to a direction multiplier
+// used by [Panel.skipHeaders] (-1 = scan upward, +1 = scan downward).
+//
+// Home jumps to the first item, which is typically a header — scan down
+// to find the first repo. End jumps to the last item, which is normally
+// a repo — defensively scan up if it isn't.
+func navDirection(b key.Binding) int {
+	switch b {
+	case key.Up, key.K, key.PageUp, key.End:
+		return -1
+	case key.Down, key.J, key.PageDown, key.Home:
+		return +1
+	default:
+		return +1
+	}
 }
 
 // maxVisibleTabs calculates how many tabs can be shown in the available width.
@@ -504,7 +599,7 @@ func (p *Panel) renderFilterRow() string {
 		errHint := lipgloss.NewStyle().Foreground(p.Theme.Error).Render(" (invalid regexp)")
 		row += errHint
 	} else if p.FilterRe != nil && p.Active >= 0 && p.Active < len(p.Tabs) {
-		total := len(p.Tabs[p.Active].AllItems)
+		total := len(p.Tabs[p.Active].Repos)
 		shown := len(p.Tabs[p.Active].List.Items())
 		countHint := lipgloss.NewStyle().Foreground(p.Theme.Dim).
 			Render(fmt.Sprintf(" %d/%d", shown, total))
@@ -561,12 +656,69 @@ func (p *Panel) renderTabBar() string {
 	)
 }
 
-// RepoItemsToListItems converts a slice of RepoItem to a slice of list.Item.
-func RepoItemsToListItems(repos []models.RepoItem) []list.Item {
-	items := make([]list.Item, len(repos))
-	for i, r := range repos {
-		items[i] = r
+// applyFilter returns the repos matching the current filter regexp.
+//
+// When no filter is active, the input slice is returned unchanged so the
+// caller can render the full tree (headers + all repos). When a filter is
+// active, only matching repos are returned and the caller renders a flat
+// list without headers.
+func (p *Panel) applyFilter(repos []models.RepoItem) []models.RepoItem {
+	if p.FilterRe == nil {
+		return repos
 	}
 
-	return items
+	filtered := make([]models.RepoItem, 0, len(repos))
+
+	for _, repo := range repos {
+		if p.FilterRe.MatchString(repo.Name) ||
+			p.FilterRe.MatchString(repo.Path) ||
+			p.FilterRe.MatchString(repo.Namespace) {
+			filtered = append(filtered, repo)
+		}
+	}
+
+	return filtered
+}
+
+// skipHeaders advances the active tab's selection past any leading
+// header rows in the preferred direction (-1 for up, +1 for down). If
+// the preferred direction hits a boundary, it falls back to searching in
+// the opposite direction so the cursor never rests on a header.
+func (p *Panel) skipHeaders(preferredDir int) {
+	if p.Active < 0 || p.Active >= len(p.Tabs) {
+		return
+	}
+
+	lst := &p.Tabs[p.Active].List
+	items := lst.Items()
+	if len(items) == 0 {
+		return
+	}
+
+	isHeader := func(i int) bool {
+		if i < 0 || i >= len(items) {
+			return false
+		}
+		_, ok := items[i].(groupHeaderItem)
+
+		return ok
+	}
+
+	// Try the preferred direction first.
+	for isHeader(lst.Index()) {
+		nxt := lst.Index() + preferredDir
+		if nxt < 0 || nxt >= len(items) {
+			break
+		}
+		lst.Select(nxt)
+	}
+
+	// Fallback: try the opposite direction.
+	for isHeader(lst.Index()) {
+		nxt := lst.Index() - preferredDir
+		if nxt < 0 || nxt >= len(items) {
+			return
+		}
+		lst.Select(nxt)
+	}
 }
