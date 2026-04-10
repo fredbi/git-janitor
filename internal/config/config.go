@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
@@ -406,6 +408,8 @@ func load(fsys fs.FS, file string, cfg *Config) (*Config, error) {
 		return nil, fmt.Errorf("decoding config: %w", err)
 	}
 
+	cfg.SortRoots()
+
 	return cfg, nil
 }
 
@@ -414,11 +418,34 @@ func (c *Config) IsEmpty() bool {
 	return len(c.Roots) == 0
 }
 
+// SortRoots reorders Roots in place by their display name (case-insensitive).
+//
+// Display name is the user-supplied Name when set, otherwise the base name of
+// Path — same convention as [Config.RootDisplayName]. Sorting is stable so
+// roots that share a display name keep their relative order.
+func (c *Config) SortRoots() {
+	sort.SliceStable(c.Roots, func(i, j int) bool {
+		return strings.ToLower(rootDisplayName(c.Roots[i])) <
+			strings.ToLower(rootDisplayName(c.Roots[j]))
+	})
+}
+
+// rootDisplayName mirrors [Config.RootDisplayName] for use during sorting,
+// where indices are about to change.
+func rootDisplayName(r LocalRoot) string {
+	if r.Name != "" {
+		return r.Name
+	}
+
+	return filepath.Base(r.Path)
+}
+
 // AddRoot appends a new root directory to the configuration.
 //
 // If name is empty it defaults to the base name of path (e.g.
-// "/home/dev/projects" → "projects").
-func (c *Config) AddRoot(name, path string, interval time.Duration) {
+// "/home/dev/projects" → "projects"). After insertion the roots slice is
+// resorted and the final index of the new root is returned.
+func (c *Config) AddRoot(name, path string, interval time.Duration) int {
 	if name == "" {
 		name = filepath.Base(path)
 	}
@@ -430,19 +457,26 @@ func (c *Config) AddRoot(name, path string, interval time.Duration) {
 			ScheduleInterval: interval,
 		},
 	})
+
+	c.SortRoots()
+
+	return c.indexByPath(path)
 }
 
 // UpdateRootName changes the display name of the root at the given index.
 //
-// It returns false if the index is out of range.
-func (c *Config) UpdateRootName(index int, name string) bool {
+// After the change the roots slice is resorted; the new index of the root
+// is returned, or -1 when the original index was out of range.
+func (c *Config) UpdateRootName(index int, name string) int {
 	if index < 0 || index >= len(c.Roots) {
-		return false
+		return -1
 	}
 
+	path := c.Roots[index].Path
 	c.Roots[index].Name = name
+	c.SortRoots()
 
-	return true
+	return c.indexByPath(path)
 }
 
 // RootDisplayName returns the display name for the root at the given index.
@@ -463,15 +497,18 @@ func (c *Config) RootDisplayName(index int) string {
 
 // UpdateRootPath changes the path of the root at the given index.
 //
-// It returns false if the index is out of range.
-func (c *Config) UpdateRootPath(index int, path string) bool {
+// Because the display name may derive from the path, the roots slice is
+// resorted after the change; the new index of the root is returned, or -1
+// when the original index was out of range.
+func (c *Config) UpdateRootPath(index int, path string) int {
 	if index < 0 || index >= len(c.Roots) {
-		return false
+		return -1
 	}
 
 	c.Roots[index].Path = path
+	c.SortRoots()
 
-	return true
+	return c.indexByPath(path)
 }
 
 // DeleteRoot removes the root at the given index.
@@ -557,4 +594,17 @@ func (c *Config) SaveTo(path string) error {
 	}
 
 	return nil
+}
+
+// indexByPath returns the index of the root with the given absolute path,
+// or -1 when no root matches. Path is the only stable identifier across
+// sorts and renames.
+func (c *Config) indexByPath(path string) int {
+	for i := range c.Roots {
+		if c.Roots[i].Path == path {
+			return i
+		}
+	}
+
+	return -1
 }

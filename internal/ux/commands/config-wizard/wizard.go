@@ -11,6 +11,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/config"
+	"github.com/fredbi/git-janitor/internal/fs"
+	"github.com/fredbi/git-janitor/internal/ux/gadgets"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -48,13 +50,13 @@ const (
 type ConfigWizard struct {
 	Cfg *config.Config // working copy of the config
 
-	PathInput       textinput.Model
-	NameInput       textinput.Model // name for a new root
+	PathInput       gadgets.PathAutocomplete // path input for a new root with directory autocompletion
+	NameInput       textinput.Model          // name for a new root
 	IntervalInput   textinput.Model
-	EditInput       textinput.Model // text input for editing an existing root's interval
-	EditNameInput   textinput.Model // text input for editing an existing root's name
-	EditPathInput   textinput.Model // text input for editing an existing root's path
-	EditFieldCursor int             // cursor within the edit-root field list
+	EditInput       textinput.Model          // text input for editing an existing root's interval
+	EditNameInput   textinput.Model          // text input for editing an existing root's name
+	EditPathInput   gadgets.PathAutocomplete // path input for editing an existing root with directory autocompletion
+	EditFieldCursor int                      // cursor within the edit-root field list
 
 	Step    Step
 	Visible bool
@@ -127,12 +129,12 @@ func New(cfg *config.Config) ConfigWizard {
 
 	return ConfigWizard{
 		Cfg:             cfg,
-		PathInput:       pi,
+		PathInput:       gadgets.NewPathAutocomplete(pi),
 		NameInput:       ni,
 		IntervalInput:   ii,
 		EditInput:       ei,
 		EditNameInput:   eni,
-		EditPathInput:   epi,
+		EditPathInput:   gadgets.NewPathAutocomplete(epi),
 		Step:            stepRoots,
 		DefaultPath:     defPath,
 		DefaultInterval: defInterval,
@@ -185,12 +187,12 @@ func (w *ConfigWizard) SetSize(termWidth, termHeight int) {
 	}
 
 	innerW := w.Width - padding // borders + padding
-	w.PathInput.Width = innerW
+	w.PathInput.SetWidth(innerW)
 	w.NameInput.Width = innerW
 	w.IntervalInput.Width = innerW
 	w.EditInput.Width = innerW
 	w.EditNameInput.Width = innerW
-	w.EditPathInput.Width = innerW
+	w.EditPathInput.SetWidth(innerW)
 }
 
 // Update handles messages while the wizard is visible.
@@ -204,13 +206,13 @@ func (w *ConfigWizard) Update(msg tea.Msg) (tea.Cmd, *uxtypes.ConfigWizardMsg) {
 
 	switch w.Step {
 	case stepPath:
-		w.PathInput, cmd = w.PathInput.Update(msg)
+		cmd, _ = w.PathInput.Update(msg)
 	case stepName:
 		w.NameInput, cmd = w.NameInput.Update(msg)
 	case stepInterval:
 		w.IntervalInput, cmd = w.IntervalInput.Update(msg)
 	case stepEditPath:
-		w.EditPathInput, cmd = w.EditPathInput.Update(msg)
+		cmd, _ = w.EditPathInput.Update(msg)
 	case stepEditInterval:
 		w.EditInput, cmd = w.EditInput.Update(msg)
 	case stepEditName:
@@ -511,65 +513,35 @@ func (w *ConfigWizard) handleEditRootKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 
 // handleEditPathKey handles keyboard input when editing a root's path.
 func (w *ConfigWizard) handleEditPathKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWizardMsg) {
-	key := msg.String()
-
-	switch key {
-	case keyEnter:
-		path := strings.TrimSpace(w.EditPathInput.Value())
-		if path == "" {
-			w.Err = "Path cannot be empty."
-
-			return nil, nil
-		}
-
-		// Expand ~ to home directory.
-		if strings.HasPrefix(path, "~/") {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				w.Err = fmt.Sprintf("Cannot resolve home directory: %v", err)
-
-				return nil, nil
-			}
-
-			path = filepath.Join(home, path[2:])
-		}
-
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			w.Err = fmt.Sprintf("Cannot resolve absolute Path: %v", err)
-
-			return nil, nil
-		}
-
-		path = absPath
-
-		info, err := os.Stat(path)
-		if err != nil {
-			w.Err = fmt.Sprintf("Cannot access Path: %v", err)
-
-			return nil, nil
-		}
-
-		if !info.IsDir() {
-			w.Err = "Path is not a directory."
-
-			return nil, nil
-		}
-
-		w.Cfg.UpdateRootPath(w.EditIndex, path)
-		w.Dirty = true
-		w.Err = ""
-		w.Step = stepEditRoot
-		w.EditPathInput.Blur()
-
-		return nil, nil
-
-	default:
-		var cmd tea.Cmd
-		w.EditPathInput, cmd = w.EditPathInput.Update(msg)
-
+	// Let the autocomplete gadget have first crack at the key.
+	// It consumes navigation and selection keys; non-consumed keys
+	// (Enter without an active selection, Esc) fall through.
+	cmd, consumed := w.EditPathInput.Update(msg)
+	if consumed {
 		return cmd, nil
 	}
+
+	if msg.String() != keyEnter {
+		return cmd, nil
+	}
+
+	path, errMsg := resolvePath(w.EditPathInput.Value())
+	if errMsg != "" {
+		w.Err = errMsg
+
+		return nil, nil
+	}
+
+	// The path change can shift the root's position when no display name
+	// is set; follow it via the returned new index.
+	w.EditIndex = w.Cfg.UpdateRootPath(w.EditIndex, path)
+	w.RootCursor = w.EditIndex
+	w.Dirty = true
+	w.Err = ""
+	w.Step = stepEditRoot
+	w.EditPathInput.Blur()
+
+	return nil, nil
 }
 
 // handleEditNameKey handles keyboard input when editing a root's display name.
@@ -580,7 +552,9 @@ func (w *ConfigWizard) handleEditNameKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.Conf
 	case keyEnter:
 		name := strings.TrimSpace(w.EditNameInput.Value())
 		// Empty name is valid — it will fall back to basename(path).
-		w.Cfg.UpdateRootName(w.EditIndex, name)
+		// The rename can shift the root's position; follow it.
+		w.EditIndex = w.Cfg.UpdateRootName(w.EditIndex, name)
+		w.RootCursor = w.EditIndex
 		w.Dirty = true
 		w.Err = ""
 		w.Step = stepEditRoot
@@ -681,70 +655,64 @@ func (w *ConfigWizard) toggleRootSecurityAlerts() {
 }
 
 func (w *ConfigWizard) handlePathKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigWizardMsg) {
-	key := msg.String()
-
-	switch key {
-	case keyEnter:
-		path := strings.TrimSpace(w.PathInput.Value())
-		if path == "" {
-			w.Err = "Path cannot be empty."
-
-			return nil, nil
-		}
-
-		// Expand ~ to home directory.
-		if strings.HasPrefix(path, "~/") {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				w.Err = fmt.Sprintf("Cannot resolve home directory: %v", err)
-
-				return nil, nil
-			}
-
-			path = filepath.Join(home, path[2:])
-		}
-
-		// Convert to absolute path.
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			w.Err = fmt.Sprintf("Cannot resolve absolute Path: %v", err)
-
-			return nil, nil
-		}
-
-		path = absPath
-
-		// Validate the path exists and is a directory.
-		info, err := os.Stat(path)
-		if err != nil {
-			w.Err = fmt.Sprintf("Cannot access Path: %v", err)
-
-			return nil, nil
-		}
-
-		if !info.IsDir() {
-			w.Err = "Path is not a directory."
-
-			return nil, nil
-		}
-
-		w.PendingPath = path
-		w.Err = ""
-		w.Step = stepName
-		w.PathInput.Blur()
-
-		// Pre-fill name with the basename of the path.
-		w.NameInput.SetValue(filepath.Base(path))
-		w.NameInput.Focus()
-
-		return textinput.Blink, nil
-
-	default:
-		var cmd tea.Cmd
-		w.PathInput, cmd = w.PathInput.Update(msg)
-
+	// Let the autocomplete gadget have first crack at the key.
+	cmd, consumed := w.PathInput.Update(msg)
+	if consumed {
 		return cmd, nil
 	}
+
+	if msg.String() != keyEnter {
+		return cmd, nil
+	}
+
+	path, errMsg := resolvePath(w.PathInput.Value())
+	if errMsg != "" {
+		w.Err = errMsg
+
+		return nil, nil
+	}
+
+	w.PendingPath = path
+	w.Err = ""
+	w.Step = stepName
+	w.PathInput.Blur()
+
+	// Pre-fill name with the basename of the path.
+	w.NameInput.SetValue(filepath.Base(path))
+	w.NameInput.Focus()
+
+	return textinput.Blink, nil
+}
+
+// resolvePath cleans, expands and validates a directory path entered by
+// the user. It returns the absolute resolved path and an empty errMsg on
+// success, or an empty path and a user-facing errMsg on failure.
+func resolvePath(raw string) (string, string) {
+	path := strings.TrimSpace(raw)
+	if path == "" {
+		return "", "Path cannot be empty."
+	}
+
+	expanded, err := fs.ExpandHome(path)
+	if err != nil {
+		return "", fmt.Sprintf("Cannot resolve home directory: %v", err)
+	}
+
+	absPath, err := filepath.Abs(expanded)
+	if err != nil {
+		return "", fmt.Sprintf("Cannot resolve absolute Path: %v", err)
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return "", fmt.Sprintf("Cannot access Path: %v", err)
+	}
+
+	if !info.IsDir() {
+		return "", "Path is not a directory."
+	}
+
+	return absPath, ""
 }
 
 // handleNameKey handles keyboard input on the name step (add-new flow).
@@ -968,7 +936,9 @@ func (w *ConfigWizard) viewEditPath(content *strings.Builder) {
 
 	heading := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 	content.WriteString(heading.Render("Editing path for: "+w.Cfg.RootDisplayName(w.EditIndex)) + "\n\n")
-	content.WriteString("  Absolute path to a directory containing git Repos:\n\n")
+	content.WriteString("  Absolute path to a directory containing git Repos:\n")
+	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).
+		Render("  ↑/↓ to pick from suggestions, Enter or Tab to accept.") + "\n\n")
 	content.WriteString(w.EditPathInput.View() + "\n")
 }
 
@@ -1011,7 +981,9 @@ func (w *ConfigWizard) viewPath(content *strings.Builder) {
 
 	content.WriteString("Add root — Path\n")
 	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).
-		Render("  Enter an absolute path to a directory containing git repos.") + "\n\n")
+		Render("  Enter an absolute path to a directory containing git repos.") + "\n")
+	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).
+		Render("  ↑/↓ to pick from suggestions, Enter or Tab to accept.") + "\n\n")
 	content.WriteString(w.PathInput.View() + "\n")
 }
 

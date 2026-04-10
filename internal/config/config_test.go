@@ -165,15 +165,15 @@ func TestAddRoot_DefaultName(t *testing.T) {
 	cfg := &Config{}
 
 	// When name is empty, it defaults to basename of path.
-	cfg.AddRoot("", "/home/dev/projects", 5*time.Minute)
-	if cfg.Roots[0].Name != "projects" {
-		t.Errorf("AddRoot empty name: got %q, want %q", cfg.Roots[0].Name, "projects")
+	idx := cfg.AddRoot("", "/home/dev/projects", 5*time.Minute)
+	if cfg.Roots[idx].Name != "projects" {
+		t.Errorf("AddRoot empty name: got %q, want %q", cfg.Roots[idx].Name, "projects")
 	}
 
 	// When name is provided, it is used as-is.
-	cfg.AddRoot("custom", "/home/dev/work", 5*time.Minute)
-	if cfg.Roots[1].Name != "custom" {
-		t.Errorf("AddRoot explicit name: got %q, want %q", cfg.Roots[1].Name, "custom")
+	idx = cfg.AddRoot("custom", "/home/dev/work", 5*time.Minute)
+	if cfg.Roots[idx].Name != "custom" {
+		t.Errorf("AddRoot explicit name: got %q, want %q", cfg.Roots[idx].Name, "custom")
 	}
 }
 
@@ -207,17 +207,130 @@ func TestUpdateRootName(t *testing.T) {
 	cfg := &Config{}
 	cfg.AddRoot("original", "/home/dev/projects", 5*time.Minute)
 
-	if !cfg.UpdateRootName(0, "renamed") {
-		t.Fatal("UpdateRootName(0) returned false")
+	if idx := cfg.UpdateRootName(0, "renamed"); idx != 0 {
+		t.Fatalf("UpdateRootName(0) returned %d, want 0", idx)
 	}
 
 	if cfg.Roots[0].Name != "renamed" {
 		t.Errorf("Name after update = %q, want %q", cfg.Roots[0].Name, "renamed")
 	}
 
-	// Out-of-range returns false.
-	if cfg.UpdateRootName(5, "nope") {
-		t.Error("UpdateRootName(5) should return false for out-of-range index")
+	// Out-of-range returns -1.
+	if idx := cfg.UpdateRootName(5, "nope"); idx != -1 {
+		t.Errorf("UpdateRootName(5) = %d, want -1 for out-of-range index", idx)
+	}
+}
+
+func TestSortRoots_Alphabetical(t *testing.T) {
+	cfg := &Config{}
+
+	// Add roots out of order; sort happens inside AddRoot.
+	cfg.AddRoot("zeta", "/p/z", time.Minute)
+	cfg.AddRoot("alpha", "/p/a", time.Minute)
+	cfg.AddRoot("Mike", "/p/m", time.Minute) // case-insensitive
+
+	want := []string{"alpha", "Mike", "zeta"}
+	for i, w := range want {
+		if got := cfg.Roots[i].Name; got != w {
+			t.Errorf("Roots[%d].Name = %q, want %q", i, got, w)
+		}
+	}
+}
+
+func TestSortRoots_FallsBackToBasename(t *testing.T) {
+	cfg := &Config{}
+	// All names empty — display name comes from basename(path).
+	cfg.Roots = []LocalRoot{
+		{Path: "/p/zebra"},
+		{Path: "/p/apple"},
+		{Path: "/p/mango"},
+	}
+	cfg.SortRoots()
+
+	want := []string{"/p/apple", "/p/mango", "/p/zebra"}
+	for i, w := range want {
+		if got := cfg.Roots[i].Path; got != w {
+			t.Errorf("Roots[%d].Path = %q, want %q", i, got, w)
+		}
+	}
+}
+
+func TestAddRoot_ReturnsNewIndex(t *testing.T) {
+	cfg := &Config{}
+
+	// Insertion order: zeta, alpha. After sort, alpha is at 0, zeta at 1.
+	zetaIdx := cfg.AddRoot("zeta", "/p/z", time.Minute)
+	if zetaIdx != 0 {
+		t.Fatalf("first AddRoot returned %d, want 0", zetaIdx)
+	}
+
+	alphaIdx := cfg.AddRoot("alpha", "/p/a", time.Minute)
+	if alphaIdx != 0 {
+		t.Errorf("AddRoot(alpha) returned %d, want 0 (sorts before zeta)", alphaIdx)
+	}
+
+	// Confirm zeta moved to index 1.
+	if cfg.Roots[1].Name != "zeta" {
+		t.Errorf("Roots[1].Name = %q, want %q", cfg.Roots[1].Name, "zeta")
+	}
+}
+
+func TestUpdateRootName_FollowsSortedPosition(t *testing.T) {
+	cfg := &Config{}
+	cfg.AddRoot("alpha", "/p/a", time.Minute)
+	cfg.AddRoot("beta", "/p/b", time.Minute)
+
+	// Rename alpha → zulu; it should move from index 0 to index 1.
+	newIdx := cfg.UpdateRootName(0, "zulu")
+	if newIdx != 1 {
+		t.Errorf("UpdateRootName returned %d, want 1", newIdx)
+	}
+
+	if cfg.Roots[newIdx].Name != "zulu" {
+		t.Errorf("Roots[%d].Name = %q, want zulu", newIdx, cfg.Roots[newIdx].Name)
+	}
+	if cfg.Roots[0].Name != "beta" {
+		t.Errorf("Roots[0].Name = %q, want beta", cfg.Roots[0].Name)
+	}
+}
+
+func TestUpdateRootPath_FollowsSortedPosition(t *testing.T) {
+	cfg := &Config{}
+	// Construct directly so Name stays empty and the display name comes
+	// from basename(Path). AddRoot would default Name to the basename,
+	// which would defeat the rename-by-path scenario under test.
+	cfg.Roots = []LocalRoot{
+		{Path: "/p/alpha"},
+		{Path: "/p/beta"},
+	}
+	cfg.SortRoots()
+
+	// Move alpha → /p/zulu; the display name becomes "zulu" and the entry
+	// should move from index 0 to index 1.
+	newIdx := cfg.UpdateRootPath(0, "/p/zulu")
+	if newIdx != 1 {
+		t.Errorf("UpdateRootPath returned %d, want 1", newIdx)
+	}
+	if cfg.Roots[newIdx].Path != "/p/zulu" {
+		t.Errorf("Roots[%d].Path = %q, want /p/zulu", newIdx, cfg.Roots[newIdx].Path)
+	}
+}
+
+func TestLoadSortsRoots(t *testing.T) {
+	yaml := "roots:\n" +
+		"  - name: zeta\n    path: /p/z\n" +
+		"  - name: alpha\n    path: /p/a\n"
+
+	cfg := &Config{}
+	if _, err := load(fakeFS(yaml), "config.yaml", cfg); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	if len(cfg.Roots) != 2 {
+		t.Fatalf("expected 2 roots, got %d", len(cfg.Roots))
+	}
+	if cfg.Roots[0].Name != "alpha" {
+		t.Errorf("Roots[0].Name = %q, want alpha", cfg.Roots[0].Name)
 	}
 }
 
