@@ -37,6 +37,13 @@ func (c RemoteBranchDiverged) Evaluate(_ context.Context, info *models.RepoInfo)
 }
 
 func (c RemoteBranchDiverged) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	// This check requires merge/rebase data which is only available after full collection.
+	// On fast-path, MergeCheck/RebaseCheck are nil and all diverged branches would
+	// incorrectly appear "stuck".
+	if info.CollectLevel != models.CollectLevelFull {
+		return noAlert(c.Name())
+	}
+
 	if models.FindRemote(info.Remotes, models.RemoteUpstream) == nil {
 		return noAlert(c.Name())
 	}

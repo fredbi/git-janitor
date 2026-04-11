@@ -43,6 +43,13 @@ func (r *Runner) Commands() []string {
 	return r.CmdLog
 }
 
+// AppendLog adds a custom entry to the command log (e.g. agent invocations).
+func (r *Runner) AppendLog(entry string) {
+	if r.logging {
+		r.CmdLog = append(r.CmdLog, entry)
+	}
+}
+
 // Run executes a git command and returns its stdout output.
 //
 // Stderr is captured and included in the error on failure.

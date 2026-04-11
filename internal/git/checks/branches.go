@@ -238,6 +238,12 @@ func (c BranchDiverged) Evaluate(_ context.Context, info *models.RepoInfo) (iter
 }
 
 func (c BranchDiverged) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	// This check requires rebase data which is only available after full collection.
+	// On fast-path, RebaseCheck is nil and all diverged branches would appear non-rebasable.
+	if info.CollectLevel != models.CollectLevelFull {
+		return noAlert(c.Name())
+	}
+
 	allDiverged := filterBranches(info, func(b models.Branch) bool {
 		if b.IsRemote || b.Ahead == 0 || b.Behind == 0 {
 			return false
@@ -315,7 +321,12 @@ func (c BranchNotMergeable) Evaluate(_ context.Context, info *models.RepoInfo) (
 
 func (c BranchNotMergeable) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
 	subjects := filterBranches(info, func(b models.Branch) bool {
-		if b.IsRemote || b.Merged || b.Name == info.DefaultBranch {
+		if b.IsRemote || b.Merged {
+			return false
+		}
+
+		// Never suggest conflict resolution for the default branch.
+		if b.Name == info.DefaultBranch {
 			return false
 		}
 
@@ -334,12 +345,23 @@ func (c BranchNotMergeable) evaluate(info *models.RepoInfo) (iter.Seq[models.Ale
 		return noAlert(c.Name())
 	}
 
-	return singleAlert(models.Alert{
+	alert := models.Alert{
 		CheckName: c.Name(),
 		Severity:  models.SeverityMedium,
 		Summary:   fmt.Sprintf("%d branch(es) cannot be merged or rebased", len(subjects)),
 		Detail:    "manual conflict resolution needed: " + subjectsDetail(subjects),
-	}), nil
+	}
+
+	// Suggest AI agent for conflict resolution (same as remote branches).
+	if agentSubjects := buildAgentSubjects(info, subjects); len(agentSubjects) > 0 {
+		alert.Suggestions = []models.ActionSuggestion{{
+			ActionName:  "agent-resolve-conflicts",
+			SubjectKind: models.SubjectBranch,
+			Subjects:    agentSubjects,
+		}}
+	}
+
+	return singleAlert(alert), nil
 }
 
 // BranchEmpty detects local branches that have no commits of their own

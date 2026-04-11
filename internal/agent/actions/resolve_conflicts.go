@@ -64,7 +64,7 @@ func (a ResolveConflicts) Execute(ctx context.Context, info *models.RepoInfo, pa
 
 	if isDryRun {
 		// Phase 1: generate and return the prompt for review.
-		prompt := prompts.BuildResolveConflictsPrompt("/tmp/worktree", branchName, targetBranch, conflictInfo)
+		prompt := prompts.BuildResolveConflictsPrompt("<worktree>", branchName, targetBranch, conflictInfo)
 
 		return models.Result{
 			OK:      true,
@@ -88,124 +88,146 @@ func (a ResolveConflicts) execute(
 	branchName, targetBranch string,
 	conflicts prompts.ConflictInfo,
 ) (models.Result, error) {
-	// We need the git runner for worktree operations.
 	gitRunner := gitbackend.NewRunner(info.Path)
 	gitRunner.StartLogging()
 
-	// Parse the remote and short branch name.
-	remote, shortBranch, ok := strings.Cut(branchName, "/")
+	_, shortBranch, ok := strings.Cut(branchName, "/")
 	if !ok {
-		// Local branch — use it directly.
-		remote = ""
 		shortBranch = branchName
 	}
 
-	// Create a temporary worktree with a new branch from the target.
-	tmpDir, err := os.MkdirTemp("", "janitor-agent-*")
+	// --- Worktree 1: strategized prompt ---
+	wt1Path, wt1Branch, err := a.createWorktree(ctx, gitRunner, branchName, shortBranch, "strategized")
 	if err != nil {
-		return models.Result{}, fmt.Errorf("cannot create temp directory: %w", err)
+		return models.Result{Message: fmt.Sprintf("worktree 1 creation failed: %v", err)}, nil
 	}
 
-	wtBranch := "janitor-agent-" + shortBranch
-	wtPath := filepath.Join(tmpDir, wtBranch)
+	wt1Runner := gitbackend.NewRunner(wt1Path)
+	wt1Runner.StartLogging()
 
-	defer func() {
-		gitRunner.Run(ctx, "worktree", "remove", "--force", wtPath) //nolint:errcheck // best-effort
-		os.RemoveAll(tmpDir)                                         //nolint:errcheck // best-effort
-		gitRunner.Run(ctx, "branch", "-D", wtBranch)                 //nolint:errcheck // best-effort cleanup
-	}()
-
-	// Create worktree from the branch.
-	_, err = gitRunner.Run(ctx, "worktree", "add", "-b", wtBranch, wtPath, branchName)
+	hasConflicts1, err := a.mergeTarget(ctx, wt1Runner, targetBranch, "strategized")
 	if err != nil {
-		return models.Result{Message: fmt.Sprintf("worktree creation failed: %v", err)}, nil
-	}
-
-	wtRunner := gitbackend.NewRunner(wtPath)
-	wtRunner.StartLogging()
-
-	// Squash all commits on top of target into one.
-	// First, reset to target keeping changes staged.
-	_, err = wtRunner.Run(ctx, "reset", "--soft", targetBranch)
-	if err != nil {
-		return models.Result{Message: fmt.Sprintf("reset --soft %s failed: %v", targetBranch, err)}, nil
-	}
-
-	// Commit the squashed changes.
-	_, err = wtRunner.Run(ctx, "commit", "-m", fmt.Sprintf("squashed %s for conflict resolution", shortBranch))
-	if err != nil {
-		return models.Result{Message: fmt.Sprintf("squash commit failed: %v", err)}, nil
-	}
-
-	// Attempt rebase onto target — this will produce conflicts.
-	_, rebaseErr := wtRunner.Run(ctx, "rebase", targetBranch)
-	if rebaseErr == nil {
-		// No conflicts! The squash+rebase succeeded cleanly.
-		return a.pushResult(ctx, wtRunner, gitRunner, remote, shortBranch, wtBranch)
-	}
-
-	// Build the prompt and invoke the agent.
-	prompt := prompts.BuildResolveConflictsPrompt(wtPath, shortBranch, targetBranch, conflicts)
-
-	agentRunner.WorkDir = wtPath
-
-	output, agentErr := agentRunner.Run(ctx, prompt)
-	if agentErr != nil {
-		// Abort the rebase to leave the worktree clean for cleanup.
-		wtRunner.Run(ctx, "rebase", "--abort") //nolint:errcheck // best-effort
-
 		return models.Result{
-			Message:    fmt.Sprintf("agent failed: %v", agentErr),
-			CommandLog: append(gitRunner.Commands(), wtRunner.Commands()...),
+			Message:    fmt.Sprintf("worktree 1 setup failed: %v", err),
+			CommandLog: append(gitRunner.Commands(), wt1Runner.Commands()...),
 		}, nil
 	}
 
-	// Verify no conflict markers remain.
-	grepOut, _ := wtRunner.Run(ctx, "grep", "-r", "<<<<<<<", ".")
-	if strings.TrimSpace(grepOut) != "" {
-		wtRunner.Run(ctx, "rebase", "--abort") //nolint:errcheck // best-effort
+	if !hasConflicts1 {
+		wt1Runner.AppendLog("# rebase succeeded cleanly — no conflicts to resolve")
+	}
 
+	prompt1 := prompts.BuildResolveConflictsPrompt(wt1Path, shortBranch, targetBranch, conflicts)
+
+	agentRunner.WorkDir = wt1Path
+	wt1Runner.AppendLog(agentRunner.CommandString(prompt1))
+
+	_, agent1Err := agentRunner.Run(ctx, prompt1)
+	if agent1Err != nil {
+		wt1Runner.AppendLog(fmt.Sprintf("# agent FAILED: %v", agent1Err))
+	}
+
+	// --- Worktree 2: minimal prompt ---
+	wt2Path, wt2Branch, err := a.createWorktree(ctx, gitRunner, branchName, shortBranch, "minimal")
+	if err != nil {
 		return models.Result{
-			Message:    "agent did not fully resolve conflicts — markers remain",
-			CommandLog: append(gitRunner.Commands(), wtRunner.Commands()...),
+			Message:    fmt.Sprintf("worktree 2 creation failed: %v", err),
+			CommandLog: append(gitRunner.Commands(), wt1Runner.Commands()...),
 		}, nil
 	}
 
-	// Stage everything and continue the rebase.
-	wtRunner.Run(ctx, "add", "-A")                //nolint:errcheck // best-effort
-	wtRunner.Run(ctx, "rebase", "--continue") //nolint:errcheck // best-effort
+	wt2Runner := gitbackend.NewRunner(wt2Path)
+	wt2Runner.StartLogging()
 
-	_ = output // agent output logged but not used further
-
-	return a.pushResult(ctx, wtRunner, gitRunner, remote, shortBranch, wtBranch)
-}
-
-func (a ResolveConflicts) pushResult(
-	ctx context.Context,
-	wtRunner, gitRunner *gitbackend.Runner,
-	remote, shortBranch, wtBranch string,
-) (models.Result, error) {
-	if remote == "" {
-		// Local branch — just update the ref.
+	hasConflicts2, err := a.mergeTarget(ctx, wt2Runner, targetBranch, "minimal")
+	if err != nil {
 		return models.Result{
-			OK:         true,
-			Message:    fmt.Sprintf("resolved conflicts on %s (local)", shortBranch),
-			CommandLog: append(gitRunner.Commands(), wtRunner.Commands()...),
+			Message:    fmt.Sprintf("worktree 2 setup failed: %v", err),
+			CommandLog: append(append(gitRunner.Commands(), wt1Runner.Commands()...), wt2Runner.Commands()...),
 		}, nil
 	}
 
-	// Push with force-with-lease to the remote.
-	_, pushErr := wtRunner.Run(ctx, "push", "--force-with-lease", remote, wtBranch+":"+shortBranch)
-	if pushErr != nil {
-		return models.Result{
-			Message:    fmt.Sprintf("resolved conflicts but push failed: %v", pushErr),
-			CommandLog: append(gitRunner.Commands(), wtRunner.Commands()...),
-		}, nil
+	if !hasConflicts2 {
+		wt2Runner.AppendLog("# rebase succeeded cleanly — no conflicts to resolve")
 	}
+
+	prompt2 := fmt.Sprintf(
+		"Resolve all merge conflicts in this git repository at %s.\n"+
+			"Branch %q is being rebased onto %q.\n"+
+			"Fix all conflict markers (<<<<<<< ======= >>>>>>>) in the working tree.\n"+
+			"Stage resolved files with `git add -A`. Do NOT commit or push.",
+		wt2Path, shortBranch, targetBranch,
+	)
+
+	agentRunner.WorkDir = wt2Path
+	wt2Runner.AppendLog(agentRunner.CommandString(prompt2))
+
+	_, agent2Err := agentRunner.Run(ctx, prompt2)
+	if agent2Err != nil {
+		wt2Runner.AppendLog(fmt.Sprintf("# agent FAILED: %v", agent2Err))
+	}
+
+	// --- Report: no push, no cleanup ---
+	cmdLog := make([]string, 0, len(gitRunner.Commands())+len(wt1Runner.Commands())+len(wt2Runner.Commands()))
+	cmdLog = append(cmdLog, gitRunner.Commands()...)
+	cmdLog = append(cmdLog, wt1Runner.Commands()...)
+	cmdLog = append(cmdLog, wt2Runner.Commands()...)
+
+	msg := fmt.Sprintf(
+		"A/B prompt test done (no push, no cleanup).\n"+
+			"  Worktree 1 (strategized): %s [branch: %s]\n"+
+			"  Worktree 2 (minimal):     %s [branch: %s]",
+		wt1Path, wt1Branch, wt2Path, wt2Branch,
+	)
 
 	return models.Result{
 		OK:         true,
-		Message:    fmt.Sprintf("resolved conflicts on %s/%s and pushed", remote, shortBranch),
-		CommandLog: append(gitRunner.Commands(), wtRunner.Commands()...),
+		Message:    msg,
+		CommandLog: cmdLog,
 	}, nil
+}
+
+// createWorktree creates a named worktree from the given branch.
+// Returns the worktree path and local branch name.
+func (a ResolveConflicts) createWorktree(
+	ctx context.Context,
+	gitRunner *gitbackend.Runner,
+	branchName, shortBranch, label string,
+) (string, string, error) {
+	tmpDir, err := os.MkdirTemp("", "janitor-agent-"+label+"-*")
+	if err != nil {
+		return "", "", fmt.Errorf("cannot create temp directory: %w", err)
+	}
+
+	wtBranch := fmt.Sprintf("janitor-agent-%s-%s", label, shortBranch)
+	wtPath := filepath.Join(tmpDir, wtBranch)
+
+	_, err = gitRunner.Run(ctx, "worktree", "add", "-b", wtBranch, wtPath, branchName)
+	if err != nil {
+		os.RemoveAll(tmpDir) //nolint:errcheck // best-effort
+		return "", "", err
+	}
+
+	return wtPath, wtBranch, nil
+}
+
+// mergeTarget merges the target branch into the worktree branch.
+// This produces conflict markers in the working tree for the agent to resolve.
+// Returns (true, nil) if the merge produces conflicts (expected).
+// Returns (false, nil) if the merge succeeds cleanly (unexpected).
+func (a ResolveConflicts) mergeTarget(
+	ctx context.Context,
+	wtRunner *gitbackend.Runner,
+	targetBranch, label string,
+) (bool, error) {
+	_, mergeErr := wtRunner.Run(ctx, "merge", "--no-commit", targetBranch)
+	hasConflicts := mergeErr != nil
+
+	if hasConflicts {
+		// Log conflicting files for diagnostics.
+		diffOut, _ := wtRunner.Run(ctx, "diff", "--name-only", "--diff-filter=U")
+		wtRunner.AppendLog(fmt.Sprintf("# [%s] merge conflicts: %s", label, strings.TrimSpace(diffOut)))
+	}
+
+	return hasConflicts, nil
 }

@@ -49,14 +49,14 @@ func (m *Model) handleExecuteAction(msg uxtypes.ExecuteActionMsg) (tea.Model, te
 func (m *Model) agentDryRun(msg uxtypes.ExecuteActionMsg) tea.Cmd {
 	info := m.LastRepoInfo
 
-	// Add "dry-run" flag to the last subject's params.
-	subjects := make([]models.ActionSubject, len(msg.Subjects))
-	copy(subjects, msg.Subjects)
-
-	if len(subjects) > 0 {
-		last := &subjects[len(subjects)-1]
-		last.Params = append(last.Params, "dry-run")
-	}
+	// Use only the first subject for prompt preview — we just need one
+	// representative prompt. Using all subjects would cause executePerSubject
+	// to run full execution on any subject missing the "dry-run" flag.
+	first := msg.Subjects[0]
+	subjects := []models.ActionSubject{{
+		Subject: first.Subject,
+		Params:  append(append([]string{}, first.Params...), "dry-run"),
+	}}
 
 	dryRunAction := models.ActionSuggestion{
 		ActionName: msg.ActionName,

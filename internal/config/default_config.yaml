@@ -5,7 +5,7 @@ github:
 agent:
   enabled: false
   command: ["claude"]
-  model: "sonnet"
+  model: "opus"
   timeout: 10m
   env:
     remove:

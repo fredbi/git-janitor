@@ -165,7 +165,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case uxtypes.AgentPromptMsg:
 		// Show the agent prompt for review. Store the action for execution on confirm.
-		m.Detail.Show("Agent Prompt (Enter: execute, Esc: cancel)", msg.Prompt)
+		m.Detail.ShowActionable("Agent Prompt", msg.Prompt)
 		m.PendingAgentAction = &msg.Action
 
 		return m, nil

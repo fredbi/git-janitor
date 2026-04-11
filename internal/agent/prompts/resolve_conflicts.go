@@ -52,7 +52,7 @@ func BuildResolveConflictsPrompt(workDir, branchName, targetBranch string, confl
 	// Context.
 	b.WriteString("CONTEXT:\n")
 	b.WriteString(fmt.Sprintf("- Repository: %s\n", workDir))
-	b.WriteString(fmt.Sprintf("- Branch %q has been squashed and rebased onto %q but has conflicts.\n", branchName, targetBranch))
+	b.WriteString(fmt.Sprintf("- Branch %q is being merged with %q but has conflicts.\n", branchName, targetBranch))
 	b.WriteString("- The working tree contains conflict markers that need resolution.\n\n")
 
 	// Conflicting files.

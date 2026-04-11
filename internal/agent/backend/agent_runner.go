@@ -41,6 +41,31 @@ func NewRunner(cfg config.AgentConfig, workDir string) *Runner {
 	}
 }
 
+// CommandString returns a human-readable representation of the agent invocation
+// for inclusion in command logs. The prompt is replaced by a truncated summary.
+func (r *Runner) CommandString(prompt string) string {
+	parts := make([]string, 0, len(r.Command)+4) //nolint:mnd // base + flags + prompt summary
+	parts = append(parts, r.Command...)
+	parts = append(parts, "--print")
+
+	if r.Model != "" {
+		parts = append(parts, "--model", r.Model)
+	}
+
+	const maxPromptLen = 80
+
+	summary := prompt
+	if len(summary) > maxPromptLen {
+		summary = summary[:maxPromptLen] + "..."
+	}
+
+	// Replace newlines for single-line log entry.
+	summary = strings.ReplaceAll(summary, "\n", " ")
+	parts = append(parts, fmt.Sprintf("%q", summary))
+
+	return "agent: " + strings.Join(parts, " ")
+}
+
 // Run invokes the agent CLI with the given prompt and returns its output.
 // The prompt is passed via the --print flag (for claude) or stdin, depending
 // on the command structure.

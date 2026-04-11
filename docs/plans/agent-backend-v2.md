@@ -4,6 +4,15 @@
 
 **v1 implemented and tested** (2026-04-08). Core plumbing works: config, runner, action, engine dispatch, UX review flow. But the conflict resolution quality is poor and the strategy needs revision.
 
+**v1 fixes applied** (2026-04-08):
+- Default model changed to opus (better prompt engineering baseline)
+- Agent command now appears in command log / Recent tab history
+- Detail popup shows contextual hints (Enter/Esc for actionable prompts)
+- Local branches with conflicts now get `agent-resolve-conflicts` suggestion (was remote-only)
+- Default branch excluded from conflict resolution suggestions
+- `RemoteBranchDiverged` and `BranchDiverged` checks skip fast-path refresh (require merge/rebase data from full collection)
+- Fixed dry-run executing all subjects: now previews a single subject's prompt instead of running the full pipeline on subjects missing the dry-run flag
+
 ## Lessons from v1 testing
 
 Tested on `go-openapi/ci-workflows` with branches `upstream/experimental` and `upstream/feat/docs-release-artifact`.
@@ -18,9 +27,14 @@ Tested on `go-openapi/ci-workflows` with branches `upstream/experimental` and `u
 1. **Squash destroys audit trail**: squashing all commits into one before rebasing makes it impossible to see how conflicts were resolved. The resolution commit is mixed with the original work.
 2. **Agent resolves by deletion**: without context about what the default branch changed, the agent resolves conflicts by preferring the branch version — which means downgrading dependencies, removing mono-repo structure, etc.
 3. **Prompt lacks default-branch context**: the agent doesn't know *what* master evolved (dependency upgrades, new files, structural changes). It just sees conflict markers.
-4. **No agent CLI in command log**: the history shows git commands but not how claude was invoked.
-5. **Local branches not supported**: only upstream remote branches trigger the suggestion.
-6. **Dry-run shows result, not prompt**: the prompt shown to the user is the success message, not the actual prompt sent to the agent.
+4. ~~**No agent CLI in command log**~~: fixed — agent command string now appears in command log.
+5. ~~**Local branches not supported**~~: fixed — `BranchNotMergeable` now suggests `agent-resolve-conflicts`.
+6. ~~**Dry-run shows result, not prompt**~~: fixed — dry-run previews a single subject's prompt; Detail popup shows Enter/Esc hints for actionable prompts.
+
+### Additional fixes
+7. ~~**False alerts on fast-path**~~: `RemoteBranchDiverged` and `BranchDiverged` now skip evaluation when merge/rebase data is unavailable (fast-path collection).
+8. ~~**Dry-run executes non-dry-run subjects**~~: `agentDryRun` was only adding the flag to the last subject; `executePerSubject` then ran full execution on the others. Fixed by sending only one subject for preview.
+9. ~~**Default branch in conflict suggestions**~~: `BranchNotMergeable` now excludes the default branch.
 
 ## Revised Strategy
 
@@ -107,26 +121,21 @@ Add to the prompt builder:
 - go.work awareness
 - GitHub Actions SHA awareness
 
-### Step 3: Add agent invocation to command log
+### Step 3: Add agent invocation to command log — DONE
 
-In the agent runner's `Run` method, append to the parent git runner's command log:
-```
-agent: claude --print --model sonnet [prompt-hash]
-```
+Agent runner has `CommandString()` method; worktree runner logs it via `AppendLog()` before invocation.
 
-### Step 4: Local branch support
+### Step 4: Local branch support — DONE
 
-Add `agent-resolve-conflicts` suggestion to:
-- `BranchDiverged.evaluate()` — for branches where `RebaseCheck` failed
-- `BranchNotMergeable.evaluate()` — for all subjects
+`BranchNotMergeable` now suggests `agent-resolve-conflicts` using shared `buildAgentSubjects()`. Default branch is excluded.
 
 ### Step 5: Config additions
 
 Add `MaxOutputTokens` and `Permissions` to `AgentConfig`.
 
-### Step 6: Fix dry-run to show actual prompt
+### Step 6: Fix dry-run to show actual prompt — DONE
 
-The dry-run should return the actual prompt that will be sent to the agent, not a summary message.
+Dry-run previews a single subject's prompt. Detail popup shows contextual hints (Enter: execute / Esc: cancel) for actionable prompts.
 
 ## Open Questions
 
