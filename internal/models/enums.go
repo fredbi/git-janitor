@@ -1,5 +1,7 @@
 package models
 
+import "strings"
+
 type RunnerKind uint8
 
 const (
@@ -74,6 +76,35 @@ func (s SubjectKind) String() string {
 		return "workflow_runs"
 	default:
 		return "unknown"
+	}
+}
+
+// ParseSubjectKind converts a string (e.g. from YAML config) into a SubjectKind.
+// It is case-insensitive and trims whitespace. Returns false for unrecognized values.
+func ParseSubjectKind(s string) (SubjectKind, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "none":
+		return SubjectNone, true
+	case "repo":
+		return SubjectRepo, true
+	case "remote":
+		return SubjectRemote, true
+	case "branch":
+		return SubjectBranch, true
+	case "stash":
+		return SubjectStash, true
+	case "tag":
+		return SubjectTag, true
+	case "file":
+		return SubjectFile, true
+	case "issues":
+		return SubjectIssues, true
+	case "pull_requests", "pull-requests", "pullrequests":
+		return SubjectPullRequests, true
+	case "workflow_runs", "workflow-runs", "workflowruns":
+		return SubjectWorkflowRuns, true
+	default:
+		return 0, false
 	}
 }
 

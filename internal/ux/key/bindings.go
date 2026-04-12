@@ -58,6 +58,7 @@ const (
 	A     Binding = "a"
 	C     Binding = "c"
 	D     Binding = "d"
+	R     Binding = "r"
 	G     Binding = "g"
 	GG    Binding = "G" // shift+g (end)
 	J     Binding = "j"

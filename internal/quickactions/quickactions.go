@@ -69,7 +69,7 @@ func New(p Params) (*QuickAction, error) {
 		return nil, ErrEmptyCommand
 	}
 
-	kind, ok := parseSubject(p.Subject)
+	kind, ok := models.ParseSubjectKind(p.Subject)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownSubject, p.Subject)
 	}
@@ -268,29 +268,3 @@ func substitute(arg string, params map[string]string) string {
 	return out
 }
 
-// parseSubject converts the YAML string form of a subject into a
-// [models.SubjectKind].
-func parseSubject(s string) (models.SubjectKind, bool) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "", "none":
-		return models.SubjectNone, true
-	case "repo":
-		return models.SubjectRepo, true
-	case "remote":
-		return models.SubjectRemote, true
-	case "branch":
-		return models.SubjectBranch, true
-	case "stash":
-		return models.SubjectStash, true
-	case "tag":
-		return models.SubjectTag, true
-	case "issues":
-		return models.SubjectIssues, true
-	case "pull_requests", "pull-requests", "pullrequests":
-		return models.SubjectPullRequests, true
-	case "workflow_runs", "workflow-runs", "workflowruns":
-		return models.SubjectWorkflowRuns, true
-	default:
-		return 0, false
-	}
-}

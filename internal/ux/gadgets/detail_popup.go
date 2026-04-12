@@ -19,6 +19,7 @@ type DetailPopup struct {
 	Title    string
 	Content  string                  // raw content for clipboard copy
 	Scope    models.ActionSuggestion // subject scope for actions (delete, etc.)
+	IsRemote bool                    // true when showing a remote branch
 	Width    int
 	Height   int
 }
@@ -50,6 +51,12 @@ func (d *DetailPopup) Hide() {
 // CanDelete reports whether the current scope supports a delete action.
 func (d *DetailPopup) CanDelete() bool {
 	return d.Scope.SubjectKind == models.SubjectBranch || d.Scope.SubjectKind == models.SubjectStash
+}
+
+// CanRebase reports whether the current scope supports a rebase action.
+// Only local branches can be rebased (remote branches cannot).
+func (d *DetailPopup) CanRebase() bool {
+	return d.Scope.SubjectKind == models.SubjectBranch && !d.IsRemote
 }
 
 // SetSize recalculates the popup dimensions (centered, ~60% of terminal).
@@ -94,6 +101,9 @@ func (d *DetailPopup) View(termWidth, termHeight int) string {
 		PaddingTop(1)
 
 	hint := "Esc: close  C: copy to clipboard"
+	if d.CanRebase() {
+		hint += "  R: rebase"
+	}
 	if d.CanDelete() {
 		hint += "  D: delete"
 	}

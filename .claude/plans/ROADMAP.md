@@ -30,7 +30,7 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
 
 ### Bugs & polish
 
-  📝 **`...more...` indicator accuracy** for paginated GitHub data
+  📝♥️ **`...more...` indicator accuracy** for paginated GitHub data
   📝 **git gc: prune unreachable refs** + informative-only when < 10MB
   ✅ **After branch deletion: fetch with `--prune`** so remotes update
   📝 **Activity tab**: needs UX refactoring (pagination done but layout needs work)
@@ -38,17 +38,17 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
 
 ### UX improvements
 
+  ✅ **Direct branch/stash actions from detail panels** (D=delete, R=rebase)
+  ✅ **Theme in config** — persist selected theme across restarts
+  ✅ **Explicit delete branch** in branches tab (detail popup)
+  ✅ **Explicit delete stash** in stashes tab (detail popup)
+  📝 **Mini-form overlay** for per-subject parameter editing — partially done, needs generalization to multi-subject actions
   📝 **Foldable/expandable tree view** for repo hierarchy in left panel
   📝 **Consolidated all-alerts panel** — fleet dashboard: all repos grouped by severity on left panel. The "mop 100 repos in 5 minutes" workflow.
   📝 **Alert rules wizard** — configure checks/actions from TUI without editing YAML
-  📝 **Direct branch/stash actions from detail panels** (D=delete, R=rebase)
-  📝 **Mini-form overlay** for per-subject parameter editing — partially done, needs generalization to multi-subject actions
   📝 **Issue/PR detail views** — partially done, needs more detail content
-  ✅ **Theme in config** — persist selected theme across restarts
-  📝 **Auto-discover roots** — scan common locations for git repos
   📝 **Prevent root cycles / duplicates** in config wizard
-  ✅ **Explicit delete branch** in branches tab (detail popup)
-  ✅ **Explicit delete stash** in stashes tab (detail popup)
+  📝♥️ **Auto-discover roots** — scan common locations for git repos
 
 ### Quick actions
 
@@ -63,10 +63,11 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
 
 ### Quality
 
-  🔨 **refact** parse enum KindSubject should belong to models (as a method) not to the quickactions package
+  ✅ **refact** parse enum KindSubject should belong to models (as a method) not to the quickactions package
   📝 **Use go-openapi/testify** test framework
   📝 **Full SPDX headers everywhere**
   📝 **CI & release** — goreleaser, binary artifacts, shared workflows
+  📝♥️ **User documentation** — hugo doc-site
 
 ## Phase 3 — New features (impact)
 
@@ -82,8 +83,8 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
 ### GitHub features
 
   📝 **Dependabot PRs** — suggest `@dependabot rebase` for stale PRs with successful CI
-  📝 **Gists** browsing/management
-  📝 **Old & large CI artifacts** cleanup (maybe)
+  📝♥️ **Gists** browsing/management
+  📝♥️ **Old & large CI artifacts** cleanup (maybe)
   ⛔ ~SSH keys management~ — out of scope (dedicated tool needed)
 
 ### Worktrees
@@ -108,17 +109,21 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
     - Suggestion actions with prompt runner
     - Prompt-tool backend: new runner producing prompts for AI agents (conflict resolution, CI failure diagnosis)
   📝 **Check "material" stash or dirty** — AI-assisted cleanup (later)
-  📝 **User documentation** — hugo doc-site
 
 ## Phase 5 — Semi-autonomous janitor
 
   📝 **Semi-autonomous engine** — priority queue, rate limiter, human-confirmed batch mode
-  📝 **Shallow clone management** — unshallow, auto-clean binaries
-  📝 **Submodule sync** — lagging remote, scan as independent repo
-  📝 **Stale .git/modules cleanup**
-  📝 **Reflog/notes cleanup**
   📝 **Binary file exceptions** — configurable regexp
   📝 **Merge/rebase strategy selection**
+
+## Phase 6 — Support for less common git features
+
+git submodules, git notes, perhaps git subtrees.
+
+  📝♥️ **Shallow clone management** — unshallow, auto-clean binaries
+  📝♥️ **Submodule sync** — lagging remote, scan as independent repo
+  📝♥️ **Stale .git/modules cleanup**
+  📝♥️ **Reflog/notes cleanup**
 
 ## Beyond (maybe / future)
 

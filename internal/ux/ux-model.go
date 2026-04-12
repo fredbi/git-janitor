@@ -162,6 +162,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case uxtypes.ShowDetailMsg:
 		m.Detail.Show(msg.Title, msg.Content, msg.Scope)
 
+		if msg.Scope.SubjectKind == models.SubjectBranch && len(msg.Scope.Subjects) > 0 {
+			m.Detail.IsRemote = m.isRemoteBranch(msg.Scope.Subjects[0].Subject)
+		}
+
 		return m, nil
 
 	case uxtypes.FetchDetailMsg:
@@ -440,7 +444,14 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if key.MsgBinding(msg) == key.D && m.Detail.CanDelete() {
-		return m.handleDetailDelete()
+		actionName := m.deleteActionName(m.Detail.Scope)
+		if actionName != "" {
+			return m.handleDetailAction(actionName)
+		}
+	}
+
+	if key.MsgBinding(msg) == key.R && m.Detail.CanRebase() {
+		return m.handleDetailAction("rebase-branch")
 	}
 
 	// Forward scroll keys to the viewport.
@@ -449,6 +460,7 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
 func (m *Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.MsgBinding(msg) {
 	case key.Enter:
@@ -979,19 +991,14 @@ func (m *Model) View() string {
 	return base
 }
 
-// handleDetailDelete constructs an ExecuteActionMsg for the subject shown in
-// the detail popup. The action goes through the standard destructive
-// confirmation flow (Y/N in the status bar).
+// handleDetailAction closes the detail popup and dispatches the named action
+// on the popup's scope. The action goes through the standard confirmation
+// flow (Y/N in the status bar for destructive or non-auto actions).
 //
 //nolint:ireturn // tea.Model interface return is the bubbletea handler convention
-func (m *Model) handleDetailDelete() (tea.Model, tea.Cmd) {
+func (m *Model) handleDetailAction(actionName string) (tea.Model, tea.Cmd) {
 	scope := m.Detail.Scope
 	m.Detail.Hide()
-
-	actionName := m.deleteActionName(scope)
-	if actionName == "" {
-		return m, nil
-	}
 
 	msg := uxtypes.ExecuteActionMsg{
 		RepoPath:   m.SelectedRepo,

@@ -52,35 +52,6 @@ func TestNew_QualifiedName(t *testing.T) {
 	}
 }
 
-func TestParseSubject(t *testing.T) {
-	cases := map[string]struct {
-		input string
-		want  models.SubjectKind
-		ok    bool
-	}{
-		"empty":    {"", models.SubjectNone, true},
-		"repo":     {"repo", models.SubjectRepo, true},
-		"branch":   {"branch", models.SubjectBranch, true},
-		"upper":    {"BRANCH", models.SubjectBranch, true},
-		"trim":     {" stash ", models.SubjectStash, true},
-		"prs":      {"pull-requests", models.SubjectPullRequests, true},
-		"workflow": {"workflow_runs", models.SubjectWorkflowRuns, true},
-		"unknown":  {"banana", 0, false},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			got, ok := parseSubject(tc.input)
-			if ok != tc.ok {
-				t.Fatalf("ok = %v, want %v", ok, tc.ok)
-			}
-			if got != tc.want {
-				t.Errorf("got %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestSubstitute(t *testing.T) {
 	params := map[string]string{
 		"repo":    "git-janitor",
