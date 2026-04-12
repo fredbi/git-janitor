@@ -50,15 +50,15 @@ func cmdRemoteVerbose() []string {
 }
 
 func cmdFetchAll() []string {
-	return []string{"fetch", "--all"}
+	return []string{"fetch", "--all", "--prune"}
 }
 
 func cmdFetchAllTags() []string {
-	return []string{"fetch", "--all", "--tags", "--force"}
+	return []string{"fetch", "--all", "--tags", "--force", "--prune"}
 }
 
 func cmdFetchRemote(remote string) []string {
-	return []string{"fetch", remote}
+	return []string{"fetch", remote, "--prune"}
 }
 
 func cmdFetchRefspec(remote, refspec string) []string {
