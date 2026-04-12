@@ -34,6 +34,7 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
   📝 **git gc: prune unreachable refs** + informative-only when < 10MB
   📝 **After branch deletion: fetch with `--prune`** so remotes update
   📝 **Activity tab**: needs UX refactoring (pagination done but layout needs work)
+  📝 **check upstream rebase shows even when no refresh, whereas local rebase don't
 
 ### UX improvements
 
@@ -73,6 +74,7 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
   📝 **Detect "track-only clones"** → impose shallow clone (needs config categorization)
   📝 **Unreachable-bloat + deep-clean action** for git gc
   📝 **Signing gotcha check** — gpgsign=true but no signingkey (needs implementation check)
+  📝 **fork-upstream-lagging / fork-sync-upstream** : push origin commit to upstream
 
 ### GitHub features
 
