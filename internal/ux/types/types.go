@@ -118,6 +118,7 @@ type CopyToClipboardMsg struct {
 type ShowDetailMsg struct {
 	Title   string
 	Content string
+	Scope   models.ActionSuggestion // subject scope for actions (delete, etc.)
 }
 
 // FetchDetailMsg is sent when the user requests details for a branch or stash.

@@ -160,7 +160,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleActionResult(msg)
 
 	case uxtypes.ShowDetailMsg:
-		m.Detail.Show(msg.Title, msg.Content)
+		m.Detail.Show(msg.Title, msg.Content, msg.Scope)
 
 		return m, nil
 
@@ -297,7 +297,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.CtrlD:
 		// Show full status message in a detail popup.
-		m.Detail.Show("Status Details", m.Status.FullMessage())
+		m.Detail.Show("Status Details", m.Status.FullMessage(), models.ActionSuggestion{})
 
 		return m, nil
 
@@ -439,6 +439,10 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if key.MsgBinding(msg) == key.D && m.Detail.CanDelete() {
+		return m.handleDetailDelete()
+	}
+
 	// Forward scroll keys to the viewport.
 	cmd := m.Detail.Update(msg)
 
@@ -466,11 +470,11 @@ func (m *Model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 			return m, wizCmd
 		case commands.CommandShowChecks:
-			m.Detail.Show("Registered Checks", m.buildCheckList())
+			m.Detail.Show("Registered Checks", m.buildCheckList(), models.ActionSuggestion{})
 
 			return m, nil
 		case commands.CommandShowActions:
-			m.Detail.Show("Registered Actions", m.buildActionList())
+			m.Detail.Show("Registered Actions", m.buildActionList(), models.ActionSuggestion{})
 
 			return m, nil
 		case commands.CommandScanRoots:
@@ -659,7 +663,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case y >= panelHeight+inputHeight:
 		// Status bar zone — show full message if truncated.
 		if m.Status.IsTruncated() {
-			m.Detail.Show("Status Details", m.Status.FullMessage())
+			m.Detail.Show("Status Details", m.Status.FullMessage(), models.ActionSuggestion{})
 		}
 
 		return m, nil
@@ -973,6 +977,69 @@ func (m *Model) View() string {
 	}
 
 	return base
+}
+
+// handleDetailDelete constructs an ExecuteActionMsg for the subject shown in
+// the detail popup. The action goes through the standard destructive
+// confirmation flow (Y/N in the status bar).
+//
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
+func (m *Model) handleDetailDelete() (tea.Model, tea.Cmd) {
+	scope := m.Detail.Scope
+	m.Detail.Hide()
+
+	actionName := m.deleteActionName(scope)
+	if actionName == "" {
+		return m, nil
+	}
+
+	msg := uxtypes.ExecuteActionMsg{
+		RepoPath:   m.SelectedRepo,
+		ActionName: actionName,
+		Subjects:   scope.Subjects,
+	}
+
+	return m.handleExecuteAction(msg)
+}
+
+// deleteActionName returns the registered action name for deleting the
+// subject described by scope, or "" if no delete action applies.
+func (m *Model) deleteActionName(scope models.ActionSuggestion) string {
+	switch scope.SubjectKind {
+	case models.SubjectStash:
+		return "drop-stash"
+
+	case models.SubjectBranch:
+		if len(scope.Subjects) == 0 {
+			return ""
+		}
+
+		name := scope.Subjects[0].Subject
+		if m.isRemoteBranch(name) {
+			return "delete-remote-branch"
+		}
+
+		return "delete-branch"
+
+	default:
+		return ""
+	}
+}
+
+// isRemoteBranch checks whether the named branch is a remote-tracking branch
+// by looking it up in the most recent RepoInfo.
+func (m *Model) isRemoteBranch(name string) bool {
+	if m.LastRepoInfo == nil {
+		return false
+	}
+
+	for _, b := range m.LastRepoInfo.Branches {
+		if b.Name == name {
+			return b.IsRemote
+		}
+	}
+
+	return false
 }
 
 // quickActionsLayout groups the layout constants used by the quick-actions

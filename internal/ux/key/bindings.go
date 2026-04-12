@@ -57,6 +57,7 @@ const (
 	N     Binding = "n"
 	A     Binding = "a"
 	C     Binding = "c"
+	D     Binding = "d"
 	G     Binding = "g"
 	GG    Binding = "G" // shift+g (end)
 	J     Binding = "j"

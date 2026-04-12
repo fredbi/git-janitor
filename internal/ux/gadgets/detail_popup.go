@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/fredbi/git-janitor/internal/models"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -16,7 +17,8 @@ type DetailPopup struct {
 	Viewport viewport.Model
 	Visible  bool
 	Title    string
-	Content  string // raw content for clipboard copy
+	Content  string                  // raw content for clipboard copy
+	Scope    models.ActionSuggestion // subject scope for actions (delete, etc.)
 	Width    int
 	Height   int
 }
@@ -30,9 +32,11 @@ func NewDetailPopup(theme *uxtypes.Theme) DetailPopup {
 }
 
 // Show makes the popup visible with the given title and content.
-func (d *DetailPopup) Show(title, content string) {
+// scope identifies the subject being viewed (for actions like delete).
+func (d *DetailPopup) Show(title, content string, scope models.ActionSuggestion) {
 	d.Title = title
 	d.Content = content
+	d.Scope = scope
 	d.Viewport.SetContent(content)
 	d.Visible = true
 	d.Viewport.GotoTop()
@@ -41,6 +45,11 @@ func (d *DetailPopup) Show(title, content string) {
 // Hide hides the popup.
 func (d *DetailPopup) Hide() {
 	d.Visible = false
+}
+
+// CanDelete reports whether the current scope supports a delete action.
+func (d *DetailPopup) CanDelete() bool {
+	return d.Scope.SubjectKind == models.SubjectBranch || d.Scope.SubjectKind == models.SubjectStash
 }
 
 // SetSize recalculates the popup dimensions (centered, ~60% of terminal).
@@ -84,9 +93,14 @@ func (d *DetailPopup) View(termWidth, termHeight int) string {
 		Foreground(t.Dim).
 		PaddingTop(1)
 
+	hint := "Esc: close  C: copy to clipboard"
+	if d.CanDelete() {
+		hint += "  D: delete"
+	}
+
 	content := titleStyle.Render(d.Title) + "\n" +
 		d.Viewport.View() + "\n" +
-		hintStyle.Render("Esc: close  C: copy to clipboard")
+		hintStyle.Render(hint)
 
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

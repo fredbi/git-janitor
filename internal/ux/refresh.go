@@ -108,6 +108,7 @@ func (m *Model) fetchDetail(scope models.ActionSuggestion) tea.Cmd {
 		return uxtypes.ShowDetailMsg{
 			Title:   title,
 			Content: content,
+			Scope:   scope,
 		}
 	}
 }
