@@ -35,6 +35,10 @@ type Config struct {
 		Rules      *RulesConfig
 	}
 
+	// Theme is the name of the color theme to use on startup.
+	// When empty, falls back to "default".
+	Theme string `mapstructure:"theme,omitempty"`
+
 	// GitHub controls GitHub API integration (requires GITHUB_TOKEN or GH_TOKEN).
 	GitHub GitHubConfig
 

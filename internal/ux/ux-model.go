@@ -95,7 +95,7 @@ func New(opts ...Option) *Model {
 	m.Status = statusbar.New(theme)
 	m.Help = help.New(theme)
 	m.Detail = gadgets.NewDetailPopup(theme)
-	m.Wizard = wizard.New(o.Cfg)
+	m.Wizard = wizard.New(o.Cfg, o.themes.Names())
 	m.QuickActions = gadgets.NewQuickActionsPopup(theme)
 
 	return m
@@ -693,6 +693,12 @@ func (m *Model) handleWizardDone(result *uxtypes.ConfigWizardMsg) (tea.Model, te
 	m.Cfg = result.Cfg
 	m.Engine.Reload(result.Cfg)
 	m.Wizard.Hide()
+
+	// Apply theme if the wizard changed it.
+	if m.Cfg.Theme != "" && m.Cfg.Theme != m.Theme.Name() {
+		m.applyThemeCommand(m.Cfg.Theme)
+	}
+
 	m.Repos.RebuildTabs(m.Cfg)
 	m.Repos.SetSize(m.Repos.Width, m.Repos.Height)
 
@@ -883,6 +889,11 @@ func (m *Model) applyThemeCommand(name string) {
 
 	m.Theme = th
 	m.setTheme()
+
+	// Persist the theme choice in config.
+	m.Cfg.Theme = th.Name()
+	_ = m.Cfg.Save()
+
 	m.Status.SetMessage("Theme: " + th.Name())
 }
 

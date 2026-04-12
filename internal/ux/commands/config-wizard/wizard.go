@@ -82,6 +82,9 @@ type ConfigWizard struct {
 	DefaultPath     string
 	DefaultInterval string
 
+	// ThemeNames is the ordered list of available theme names (for cycling).
+	ThemeNames []string
+
 	Width  int
 	Height int
 }
@@ -90,7 +93,8 @@ type ConfigWizard struct {
 var editRootFields = []string{"Path", "Name", "Interval", "Max Depth", "GitHub", "Security Alerts"} //nolint:gochecknoglobals // wizard field list
 
 // New creates a new ConfigWizard for the given configuration.
-func New(cfg *config.Config) ConfigWizard {
+// themeNames provides the ordered list of available color themes for the [T] toggle.
+func New(cfg *config.Config, themeNames []string) ConfigWizard {
 	defPath := resolveDefaultPath()
 	defInterval := resolveDefaultInterval()
 
@@ -149,6 +153,7 @@ func New(cfg *config.Config) ConfigWizard {
 		Step:              stepRoots,
 		DefaultPath:       defPath,
 		DefaultInterval:   defInterval,
+		ThemeNames:        themeNames,
 	}
 }
 
@@ -442,6 +447,11 @@ func (w *ConfigWizard) handleRootsKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigW
 
 		return textinput.Blink, nil
 
+	case "t", "T":
+		w.cycleTheme()
+
+		return nil, nil
+
 	case "s", "S":
 		if !w.Dirty {
 			return nil, nil
@@ -460,6 +470,31 @@ func (w *ConfigWizard) handleRootsKey(msg tea.KeyMsg) (tea.Cmd, *uxtypes.ConfigW
 	}
 
 	return nil, nil
+}
+
+// cycleTheme advances the config theme to the next available theme name.
+func (w *ConfigWizard) cycleTheme() {
+	if len(w.ThemeNames) == 0 {
+		return
+	}
+
+	current := w.Cfg.Theme
+	if current == "" {
+		current = "default"
+	}
+
+	// Find current index and advance.
+	next := w.ThemeNames[0]
+	for i, name := range w.ThemeNames {
+		if name == current && i+1 < len(w.ThemeNames) {
+			next = w.ThemeNames[i+1]
+
+			break
+		}
+	}
+
+	w.Cfg.Theme = next
+	w.Dirty = true
 }
 
 // handleEditRootKey handles the field-selection menu for editing a root.
@@ -929,8 +964,18 @@ func (w *ConfigWizard) viewRoots(content *strings.Builder) {
 
 	content.WriteString("\n")
 
+	// Show current theme.
+	themeName := w.Cfg.Theme
+	if themeName == "" {
+		themeName = "default"
+	}
+
+	themeLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("63")).
+		Render("Theme: " + themeName)
+	content.WriteString("  " + themeLabel + "\n\n")
+
 	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	content.WriteString(hint.Render("  ↑/↓ select   Enter edit   [A] add new   [D] delete") + "\n")
+	content.WriteString(hint.Render("  ↑/↓ select   Enter edit   [A] add new   [D] delete   [T] theme") + "\n")
 }
 
 func (w *ConfigWizard) viewEditRoot(content *strings.Builder) {

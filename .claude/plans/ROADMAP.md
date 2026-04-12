@@ -44,9 +44,11 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
   📝 **Direct branch/stash actions from detail panels** (D=delete, R=rebase)
   📝 **Mini-form overlay** for per-subject parameter editing — partially done, needs generalization to multi-subject actions
   📝 **Issue/PR detail views** — partially done, needs more detail content
-  📝 **Theme in config** — persist selected theme across restarts
+  🔨 **Theme in config** — persist selected theme across restarts
   📝 **Auto-discover roots** — scan common locations for git repos
   📝 **Prevent root cycles / duplicates** in config wizard
+  📝 **Explicit delete branch** in branches tab (detail popup)
+  📝 **Explicit delete stash** in stashes tab (detail popup)
 
 ### Quick actions
 
@@ -61,6 +63,7 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
 
 ### Quality
 
+  🔨 **refact** parse enum KindSubject should belong to models (as a method) not to the quickactions package
   📝 **Use go-openapi/testify** test framework
   📝 **Full SPDX headers everywhere**
   📝 **CI & release** — goreleaser, binary artifacts, shared workflows

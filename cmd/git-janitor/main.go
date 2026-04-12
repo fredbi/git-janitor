@@ -34,11 +34,21 @@ func main() {
 	themes := registry.New[uxtypes.Theme](
 		registry.With(themes.AllThemes()),
 	)
-	defaultTheme, ok := themes.Get("default")
-	if !ok {
-		fatal(errors.New("no default color theme defined"))
+	// Select the initial theme from config, falling back to "default".
+	themeName := cfg.Theme
+	if themeName == "" {
+		themeName = "default"
+	}
 
-		return
+	defaultTheme, ok := themes.Get(themeName)
+	if !ok {
+		// Config names a theme that doesn't exist — fall back gracefully.
+		defaultTheme, ok = themes.Get("default")
+		if !ok {
+			fatal(errors.New("no default color theme defined"))
+
+			return
+		}
 	}
 
 	// Open persistent store for caching and history.

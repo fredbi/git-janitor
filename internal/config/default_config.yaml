@@ -1,4 +1,5 @@
 roots: []
+theme: default
 github:
   enabled: true
   securityAlerts: true
