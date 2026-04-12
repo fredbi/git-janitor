@@ -59,6 +59,27 @@ func (p *Panel) SetSize(w, h int) {
 	p.Base.SetSize(w, h, 1, 1) // 1 reserved for header
 }
 
+// SelectedBranch returns the currently highlighted branch, or false when the
+// list is empty or the cursor is out of range.
+func (p *Panel) SelectedBranch() (models.Branch, bool) {
+	if p.Cursor < 0 || p.Cursor >= len(p.branches) {
+		return models.Branch{}, false
+	}
+
+	return p.branches[p.Cursor], true
+}
+
+// CursorScreenRow returns the visual row of the cursor within the panel's
+// content area. The caller adds the right-panel offset (border + tab bar)
+// to compute the absolute screen row for popup anchoring.
+//
+// Layout: header (1 line) + (Cursor - Offset) data rows.
+func (p *Panel) CursorScreenRow() int {
+	const headerRow = 1
+
+	return headerRow + p.Cursor - p.Offset
+}
+
 // Update handles key messages for cursor navigation.
 func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 	km, ok := msg.(tea.KeyMsg)

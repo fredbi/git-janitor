@@ -13,7 +13,11 @@
 * [x] ux glitch: left panel changes height depending on the tab displayed on the right (+1/-1 line)
 * [x] delete-branch: branch can be deleted but this is the current branch -> should first switch to the default branch, then delete
 * [x] delete remote branch error: missing user in remote URL??? (ci-workflows)
+
 * issues/PR/workflows: ...more... indicator not 100% accurate, esp. when data is cached
+* hierarchy with folders: make this foldable / expandable (tree view)
+* git gc would need some pruning of unreachable refs. Also when < 10MB the alert become just informative with no action
+* after branch deletion should fetch with --prune so all remotes get updated
 
 ## git checks / alerts
 
@@ -52,6 +56,16 @@ Improvements:
 * keys?
 * old & large CI artifacts
 
+## worktrees
+
+Worktree is a new subject of its own.
+
+We have a tab to browse worktrees, with current status and branch.
+
+We have a quick action to open worktree in terminal.
+
+We have additional actions to delete worktrees
+
 ## ux
 
 * [x] new interaction for details (branches, stashes) (Enter)
@@ -63,10 +77,16 @@ Improvements:
 * [x] status bar with large error messages
 * [x] other panel height shifting causes
 * [x] commands to list and document all checks and actions
+
 * activity pagination glitches
 * is there a context associated to bubble components or should we always assume background?
 * self-update
 
+### quick actions
+
+* [x] add "quick actions": open in terminal, open in browser with workdir and title set
+* [ ] add "quick actions" and other subjects (branches)
+* [ ] auto-detect preferred terminal emulator and setup
 
 ## quality
 
@@ -78,7 +98,6 @@ Improvements:
 ## AI features
 
 * add "manual actions" panel
-* add "quick actions": open in terminal, open in browser
 * add "suggestion actions" with "prompt runner"
 * check "material" stash or dirty
  * delete / clean
@@ -173,17 +192,22 @@ A panel that displays all alerts (by default not "info") on all repos
 
 ## config
 
-* root path auto-completion
+* [x] root path auto-completion
 * auto-discover roots 
+* prevent root cycles / root duplicates in config wizard
 * theme in config
 * rule-config wizard
-* browse all checks / all actions:
+* [x] browse all checks / all actions:
 
 ## theming
 
 extract primary, secondary, tertiary: this is the base theme -> reusable as a bubble
 
 other fields are a specialization for our panels
+### history
+
+* [ ] Clear history / older history (e.g. > 90d)
+* [x] keep full record of git command
 
 ## STUFF DONE
 
@@ -195,9 +219,6 @@ other fields are a specialization for our panels
 
 * [x] ctrl-H: contextualized help for current tab
 
-### history
-
-* [x] keep full record of git command
 
 ### [x] branches
 

@@ -110,3 +110,39 @@ defaults:
       # Browser
       - name: open-in-browser
         auto: true
+quick-actions:
+  - subject: repo
+    name: open-in-terminal
+    description: Open repo in a terminal
+    init-commands:
+      - git status
+    command:
+      - gnome-terminal
+      - '--'
+      - bash
+      - '--init-file'
+      - '{{init-file}}'
+  - subject: branch
+    name: open-branch-in-terminal
+    description: Checkout branch in a terminal
+    init-commands:
+      - 'git checkout {{branch}}'
+    command:
+      - gnome-terminal
+      - '--'
+      - bash
+      - '--init-file'
+      - '{{init-file}}'
+  - subject: branch
+    name: open-branch-worktree-in-terminal
+    description: Open branch in a new worktree
+    pre-commands:
+      - 'git worktree add "{{worktree}}" "{{branch}}" 2>/dev/null || true'
+    init-commands:
+      - git status
+    command:
+      - gnome-terminal
+      - '--'
+      - bash
+      - '--init-file'
+      - '{{init-file}}'

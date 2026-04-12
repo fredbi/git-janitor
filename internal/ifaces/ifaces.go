@@ -7,6 +7,7 @@ import (
 
 	"github.com/fredbi/git-janitor/internal/config"
 	"github.com/fredbi/git-janitor/internal/models"
+	"github.com/fredbi/git-janitor/internal/quickactions"
 )
 
 // Engineer describes how engines operate.
@@ -59,6 +60,17 @@ type Engineer interface {
 
 	// Reload config and sets checks configured for individual roots & repos.
 	Reload(cfg *config.Config)
+
+	// QuickActionsFor returns the quick actions registered for the given
+	// root index that operate on the given subject. Pass
+	// [models.SubjectNone] as subject to receive every entry.
+	QuickActionsFor(rootIndex int, subject models.SubjectKind) iter.Seq[*quickactions.QuickAction]
+
+	// ExecuteQuickAction looks up a quick action by display name within the
+	// given root scope and runs it with the supplied placeholder params.
+	// The action is spawned detached: this call returns as soon as the
+	// child process has been started.
+	ExecuteQuickAction(ctx context.Context, rootIndex int, name string, params map[string]string) error
 }
 
 // SelfDescribed is common to checks and actions: provides a name and

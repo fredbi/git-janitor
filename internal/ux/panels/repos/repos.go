@@ -387,6 +387,25 @@ func (p *Panel) SetRootItems(rootIndex int, repos []models.RepoItem) tea.Cmd {
 	return cmd
 }
 
+// CursorScreenRow returns the row, relative to the panel's top-left corner,
+// at which the currently selected list item is displayed. This is the row
+// where small overlays (e.g. the quick-actions popup) should anchor.
+//
+// The layout is fixed: border-top (1) + tab bar (1) + filter row (1) +
+// list title (1) + list cursor row, hence the constant offset of 4.
+//
+// If no list is active the function falls back to the first row inside the
+// border so callers can still position something visible.
+func (p *Panel) CursorScreenRow() int {
+	const headerRows = 4 // border + tabs + filter + list title
+
+	if p.Active < 0 || p.Active >= len(p.Tabs) {
+		return headerRows
+	}
+
+	return headerRows + p.Tabs[p.Active].List.Cursor()
+}
+
 // SelectedRepo returns the currently selected repository in the active tab.
 //
 // Returns (zero, false) when the selection is on a group header row or

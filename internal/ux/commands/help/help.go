@@ -23,6 +23,7 @@ Navigation
   Ctrl+R             Fetch (git fetch --all --tags) and refresh selected repo
   Ctrl+H             Contextual help for the focused panel/tab
   Ctrl+D             Show status bar details (Esc: close, C: copy)
+  Ctrl+K             Quick actions popup (eligible to current focus)
 
 Mouse
 ─────
@@ -129,6 +130,11 @@ var contextHelp = map[string]string{ //nolint:gochecknoglobals // help text tabl
     g / G              Jump to top / bottom
     PgUp / PgDn        Page up / page down
 
+  Quick actions:
+    Ctrl+K             Open quick-actions popup for the selected repository
+                       (subject = repo). Configured under "quick-actions:"
+                       in the YAML config; per-root overrides apply.
+
 ────────────────────
 Press Esc or Ctrl+H to close.  /help for general help.
 `,
@@ -154,6 +160,10 @@ Press Esc or Ctrl+H to close.  /help for general help.
     PgUp / PgDn        Page up / page down
 
   Auto-refreshes after Ctrl+R (fetch).
+
+  Quick actions:
+    Ctrl+K             Open quick-actions popup for this repository.
+                       (subject = repo)
 
 ────────────────────
 Press Esc or Ctrl+H to close.  /help for general help.
@@ -182,6 +192,10 @@ Press Esc or Ctrl+H to close.  /help for general help.
     Enter              Show branch details
 
   Auto-refreshes after Ctrl+R (fetch).
+
+  Quick actions:
+    Ctrl+K             Open quick-actions popup for the selected branch.
+                       (subject = branch)
 
 ────────────────────
 Press Esc or Ctrl+H to close.  /help for general help.

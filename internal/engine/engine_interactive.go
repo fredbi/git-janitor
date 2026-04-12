@@ -14,6 +14,7 @@ import (
 	githubbackend "github.com/fredbi/git-janitor/internal/github/backend"
 	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/models"
+	"github.com/fredbi/git-janitor/internal/quickactions"
 )
 
 var _ ifaces.Engineer = &Interactive{}
@@ -326,9 +327,41 @@ func (e *Interactive) ProviderEnabled(provider string) bool {
 	}
 }
 
-// Reload updates the engine's configuration.
+// Reload updates the engine's configuration and rebuilds the quick-actions
+// registry from the new config so that user changes (added or removed
+// entries, per-root overrides) take effect immediately.
 func (e *Interactive) Reload(cfg *config.Config) {
 	e.cfg = cfg
+
+	reg, _ := quickactions.BuildRegistry(cfg)
+	e.quickActions = reg
+}
+
+// QuickActionsFor returns the quick actions registered for the given root
+// index that operate on the given subject. Use [models.SubjectNone] to
+// receive every entry registered for that root.
+func (e *Interactive) QuickActionsFor(rootIndex int, subject models.SubjectKind) iter.Seq[*quickactions.QuickAction] {
+	return quickactions.IterateForRoot(e.quickActions, rootIndex, subject)
+}
+
+// ExecuteQuickAction looks up a quick action by display name within the
+// given root scope and runs it with the supplied placeholder params.
+//
+// The action is spawned detached: this call returns as soon as the child
+// process has been started — there is no waiting and no result to report
+// beyond start-time errors.
+func (e *Interactive) ExecuteQuickAction(
+	ctx context.Context,
+	rootIndex int,
+	name string,
+	params map[string]string,
+) error {
+	qa, ok := quickactions.LookupForRoot(e.quickActions, rootIndex, name)
+	if !ok {
+		return fmt.Errorf("engine: quick action %q not found for root %d", name, rootIndex)
+	}
+
+	return qa.Run(ctx, params)
 }
 
 // collectPlatform fetches hosting-platform metadata if applicable.

@@ -5,6 +5,7 @@ import (
 
 	"github.com/fredbi/git-janitor/internal/config"
 	"github.com/fredbi/git-janitor/internal/ifaces"
+	"github.com/fredbi/git-janitor/internal/quickactions"
 	"github.com/fredbi/git-janitor/internal/registry"
 	"github.com/fredbi/git-janitor/internal/store"
 )
@@ -14,11 +15,12 @@ type Option func(*options)
 const defaultCacheTTL = 5 * time.Minute
 
 type options struct {
-	cfg      *config.Config
-	checks   *registry.Registry[ifaces.Check]
-	actions  *registry.Registry[ifaces.Action]
-	store    store.Store
-	cacheTTL time.Duration
+	cfg          *config.Config
+	checks       *registry.Registry[ifaces.Check]
+	actions      *registry.Registry[ifaces.Action]
+	store        store.Store
+	cacheTTL     time.Duration
+	quickActions *registry.Registry[*quickactions.QuickAction]
 }
 
 func WithConfig(cfg *config.Config) Option {
@@ -64,6 +66,13 @@ func optionsWithDefaults(opts []Option) options {
 
 	if o.cacheTTL == 0 {
 		o.cacheTTL = defaultCacheTTL
+	}
+
+	if o.quickActions == nil {
+		// Build from cfg now so the engine is usable straight after construction.
+		// Build errors are silently ignored here — they will resurface on Reload.
+		reg, _ := quickactions.BuildRegistry(o.cfg)
+		o.quickActions = reg
 	}
 
 	return o

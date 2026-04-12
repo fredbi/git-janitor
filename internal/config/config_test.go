@@ -429,6 +429,171 @@ func TestRoundTrip_WithName(t *testing.T) {
 	}
 }
 
+const qaOpenInTerminal = "open-in-terminal"
+
+func TestLoadDefaults_QuickActions(t *testing.T) {
+	cfg, err := loadDefaults()
+	if err != nil {
+		t.Fatalf("loadDefaults() error: %v", err)
+	}
+
+	if len(cfg.QuickActions) == 0 {
+		t.Fatal("expected at least one default quick action, got none")
+	}
+
+	var found bool
+	for _, qa := range cfg.QuickActions {
+		if qa.Name != qaOpenInTerminal {
+			continue
+		}
+
+		found = true
+
+		if qa.Subject != "repo" {
+			t.Errorf("%s Subject = %q, want %q", qaOpenInTerminal, qa.Subject, "repo")
+		}
+
+		if len(qa.Command) == 0 || qa.Command[0] != "gnome-terminal" {
+			t.Errorf("%s Command[0] = %v, want gnome-terminal", qaOpenInTerminal, qa.Command)
+		}
+
+		if len(qa.InitCommands) == 0 || qa.InitCommands[0] != "git status" {
+			t.Errorf("%s InitCommands = %v, want [git status]", qaOpenInTerminal, qa.InitCommands)
+		}
+	}
+
+	if !found {
+		t.Errorf("default quick action %s not present", qaOpenInTerminal)
+	}
+}
+
+func TestQuickActionsForRoot_MergeByName(t *testing.T) {
+	cfg := &Config{
+		QuickActions: []QuickActionConfig{
+			{Name: qaOpenInTerminal, Subject: "repo", Command: []string{"gnome-terminal"}},
+			{Name: "list-files", Subject: "repo", Command: []string{"ls"}},
+		},
+		Roots: []LocalRoot{
+			{
+				Name: "work",
+				Path: "/p/w",
+				RootConfig: RootConfig{
+					QuickActions: []QuickActionConfig{
+						// Override: same name as global open-in-terminal.
+						{Name: qaOpenInTerminal, Subject: "repo", Command: []string{"xterm"}},
+						// New entry only for this root.
+						{Name: "open-editor", Subject: "repo", Command: []string{"nvim"}},
+					},
+				},
+			},
+			{
+				Name:       "personal",
+				Path:       "/p/p",
+				RootConfig: RootConfig{}, // no overrides
+			},
+		},
+	}
+
+	// Root 0 (work): override applies + new entry appended.
+	merged := cfg.QuickActionsForRoot(0)
+	if len(merged) != 3 {
+		t.Fatalf("root 0: expected 3 entries, got %d (%v)", len(merged), merged)
+	}
+
+	if merged[0].Name != qaOpenInTerminal || merged[0].Command[0] != "xterm" {
+		t.Errorf("root 0: open-in-terminal not overridden, got %+v", merged[0])
+	}
+
+	if merged[1].Name != "list-files" || merged[1].Command[0] != "ls" {
+		t.Errorf("root 0: list-files should be inherited, got %+v", merged[1])
+	}
+
+	if merged[2].Name != "open-editor" {
+		t.Errorf("root 0: open-editor should be appended, got %+v", merged[2])
+	}
+
+	// Root 1 (personal): inherits both globals unchanged.
+	merged = cfg.QuickActionsForRoot(1)
+	if len(merged) != 2 {
+		t.Fatalf("root 1: expected 2 entries, got %d", len(merged))
+	}
+
+	if merged[0].Command[0] != "gnome-terminal" {
+		t.Errorf("root 1: open-in-terminal not inherited, got %+v", merged[0])
+	}
+
+	// Out-of-range root: returns globals.
+	merged = cfg.QuickActionsForRoot(99)
+	if len(merged) != 2 {
+		t.Errorf("out-of-range: expected 2 globals, got %d", len(merged))
+	}
+}
+
+func TestMergeQuickActions_AddsMissingDefaults(t *testing.T) {
+	user := []QuickActionConfig{
+		{Name: "user-only", Subject: "repo", Command: []string{"foo"}},
+	}
+	defaults := []QuickActionConfig{
+		{Name: "user-only", Subject: "repo", Command: []string{"DEFAULT-OVERWRITE"}},
+		{Name: qaOpenInTerminal, Subject: "repo", Command: []string{"gnome-terminal"}},
+	}
+
+	merged := mergeQuickActions(user, defaults)
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(merged))
+	}
+
+	// User entry preserved as-is (default with same name is NOT applied).
+	if merged[0].Command[0] != "foo" {
+		t.Errorf("user entry overwritten: got %+v", merged[0])
+	}
+
+	// Default appended.
+	if merged[1].Name != qaOpenInTerminal {
+		t.Errorf("default entry not appended: got %+v", merged[1])
+	}
+}
+
+func TestRoundTrip_QuickActions(t *testing.T) {
+	original := &Config{
+		QuickActions: []QuickActionConfig{
+			{
+				Name:        qaOpenInTerminal,
+				Subject:     "repo",
+				Description: "Open repo in terminal",
+				Command:     []string{"gnome-terminal", "--working-directory={{workdir}}"},
+			},
+		},
+	}
+	original.AddRoot("work", "/p/w", time.Minute)
+	original.Roots[0].RootConfig.QuickActions = []QuickActionConfig{
+		{Name: "extra", Subject: "repo", Command: []string{"echo", "hi"}},
+	}
+
+	var buf bytes.Buffer
+	if err := original.EncodeYAML(&buf); err != nil {
+		t.Fatalf("EncodeYAML: %v", err)
+	}
+
+	restored := &Config{}
+	if _, err := load(fakeFS(buf.String()), "config.yaml", restored); err != nil {
+		t.Fatalf("load: %v\nyaml=%s", err, buf.String())
+	}
+
+	if len(restored.QuickActions) != 1 || restored.QuickActions[0].Name != qaOpenInTerminal {
+		t.Errorf("global quick actions not round-tripped: %+v", restored.QuickActions)
+	}
+
+	if len(restored.Roots) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(restored.Roots))
+	}
+
+	rootQAs := restored.Roots[0].RootConfig.QuickActions
+	if len(rootQAs) != 1 || rootQAs[0].Name != "extra" {
+		t.Errorf("per-root quick actions not round-tripped: %+v", rootQAs)
+	}
+}
+
 // fakeFS is a minimal fs.FS that serves a single file from a string.
 type fakeFS string
 

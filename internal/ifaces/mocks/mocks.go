@@ -13,6 +13,7 @@ import (
 	"github.com/fredbi/git-janitor/internal/config"
 	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/models"
+	"github.com/fredbi/git-janitor/internal/quickactions"
 )
 
 // Ensure that MockEngineer does implement ifaces.Engineer.
@@ -37,6 +38,9 @@ var _ ifaces.Engineer = &MockEngineer{}
 //			ExecuteFunc: func(ctx context.Context, info *models.RepoInfo, action models.ActionSuggestion) (models.Result, error) {
 //				panic("mock out the Execute method")
 //			},
+//			ExecuteQuickActionFunc: func(ctx context.Context, rootIndex int, name string, params map[string]string) error {
+//				panic("mock out the ExecuteQuickAction method")
+//			},
 //			GetActionFunc: func(name string) (ifaces.Action, bool) {
 //				panic("mock out the GetAction method")
 //			},
@@ -45,6 +49,9 @@ var _ ifaces.Engineer = &MockEngineer{}
 //			},
 //			ProviderEnabledFunc: func(provider string) bool {
 //				panic("mock out the ProviderEnabled method")
+//			},
+//			QuickActionsForFunc: func(rootIndex int, subject models.SubjectKind) iter.Seq[*quickactions.QuickAction] {
+//				panic("mock out the QuickActionsFor method")
 //			},
 //			RecentHistoryFunc: func(repoPath string, since time.Time) []models.HistoryEntry {
 //				panic("mock out the RecentHistory method")
@@ -74,6 +81,9 @@ type MockEngineer struct {
 	// ExecuteFunc mocks the Execute method.
 	ExecuteFunc func(ctx context.Context, info *models.RepoInfo, action models.ActionSuggestion) (models.Result, error)
 
+	// ExecuteQuickActionFunc mocks the ExecuteQuickAction method.
+	ExecuteQuickActionFunc func(ctx context.Context, rootIndex int, name string, params map[string]string) error
+
 	// GetActionFunc mocks the GetAction method.
 	GetActionFunc func(name string) (ifaces.Action, bool)
 
@@ -82,6 +92,9 @@ type MockEngineer struct {
 
 	// ProviderEnabledFunc mocks the ProviderEnabled method.
 	ProviderEnabledFunc func(provider string) bool
+
+	// QuickActionsForFunc mocks the QuickActionsFor method.
+	QuickActionsForFunc func(rootIndex int, subject models.SubjectKind) iter.Seq[*quickactions.QuickAction]
 
 	// RecentHistoryFunc mocks the RecentHistory method.
 	RecentHistoryFunc func(repoPath string, since time.Time) []models.HistoryEntry
@@ -130,6 +143,17 @@ type MockEngineer struct {
 			// Action is the action argument value.
 			Action models.ActionSuggestion
 		}
+		// ExecuteQuickAction holds details about calls to the ExecuteQuickAction method.
+		ExecuteQuickAction []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// RootIndex is the rootIndex argument value.
+			RootIndex int
+			// Name is the name argument value.
+			Name string
+			// Params is the params argument value.
+			Params map[string]string
+		}
 		// GetAction holds details about calls to the GetAction method.
 		GetAction []struct {
 			// Name is the name argument value.
@@ -144,6 +168,13 @@ type MockEngineer struct {
 		ProviderEnabled []struct {
 			// Provider is the provider argument value.
 			Provider string
+		}
+		// QuickActionsFor holds details about calls to the QuickActionsFor method.
+		QuickActionsFor []struct {
+			// RootIndex is the rootIndex argument value.
+			RootIndex int
+			// Subject is the subject argument value.
+			Subject models.SubjectKind
 		}
 		// RecentHistory holds details about calls to the RecentHistory method.
 		RecentHistory []struct {
@@ -165,16 +196,18 @@ type MockEngineer struct {
 			Cfg *config.Config
 		}
 	}
-	lockCollect         sync.RWMutex
-	lockCollectDetails  sync.RWMutex
-	lockEvaluate        sync.RWMutex
-	lockExecute         sync.RWMutex
-	lockGetAction       sync.RWMutex
-	lockGetCheck        sync.RWMutex
-	lockProviderEnabled sync.RWMutex
-	lockRecentHistory   sync.RWMutex
-	lockRefresh         sync.RWMutex
-	lockReload          sync.RWMutex
+	lockCollect            sync.RWMutex
+	lockCollectDetails     sync.RWMutex
+	lockEvaluate           sync.RWMutex
+	lockExecute            sync.RWMutex
+	lockExecuteQuickAction sync.RWMutex
+	lockGetAction          sync.RWMutex
+	lockGetCheck           sync.RWMutex
+	lockProviderEnabled    sync.RWMutex
+	lockQuickActionsFor    sync.RWMutex
+	lockRecentHistory      sync.RWMutex
+	lockRefresh            sync.RWMutex
+	lockReload             sync.RWMutex
 }
 
 // Collect calls CollectFunc.
@@ -337,6 +370,50 @@ func (mock *MockEngineer) ExecuteCalls() []struct {
 	return calls
 }
 
+// ExecuteQuickAction calls ExecuteQuickActionFunc.
+func (mock *MockEngineer) ExecuteQuickAction(ctx context.Context, rootIndex int, name string, params map[string]string) error {
+	if mock.ExecuteQuickActionFunc == nil {
+		panic("MockEngineer.ExecuteQuickActionFunc: method is nil but Engineer.ExecuteQuickAction was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		RootIndex int
+		Name      string
+		Params    map[string]string
+	}{
+		Ctx:       ctx,
+		RootIndex: rootIndex,
+		Name:      name,
+		Params:    params,
+	}
+	mock.lockExecuteQuickAction.Lock()
+	mock.calls.ExecuteQuickAction = append(mock.calls.ExecuteQuickAction, callInfo)
+	mock.lockExecuteQuickAction.Unlock()
+	return mock.ExecuteQuickActionFunc(ctx, rootIndex, name, params)
+}
+
+// ExecuteQuickActionCalls gets all the calls that were made to ExecuteQuickAction.
+// Check the length with:
+//
+//	len(mockedEngineer.ExecuteQuickActionCalls())
+func (mock *MockEngineer) ExecuteQuickActionCalls() []struct {
+	Ctx       context.Context
+	RootIndex int
+	Name      string
+	Params    map[string]string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		RootIndex int
+		Name      string
+		Params    map[string]string
+	}
+	mock.lockExecuteQuickAction.RLock()
+	calls = mock.calls.ExecuteQuickAction
+	mock.lockExecuteQuickAction.RUnlock()
+	return calls
+}
+
 // GetAction calls GetActionFunc.
 func (mock *MockEngineer) GetAction(name string) (ifaces.Action, bool) {
 	if mock.GetActionFunc == nil {
@@ -430,6 +507,42 @@ func (mock *MockEngineer) ProviderEnabledCalls() []struct {
 	mock.lockProviderEnabled.RLock()
 	calls = mock.calls.ProviderEnabled
 	mock.lockProviderEnabled.RUnlock()
+	return calls
+}
+
+// QuickActionsFor calls QuickActionsForFunc.
+func (mock *MockEngineer) QuickActionsFor(rootIndex int, subject models.SubjectKind) iter.Seq[*quickactions.QuickAction] {
+	if mock.QuickActionsForFunc == nil {
+		panic("MockEngineer.QuickActionsForFunc: method is nil but Engineer.QuickActionsFor was just called")
+	}
+	callInfo := struct {
+		RootIndex int
+		Subject   models.SubjectKind
+	}{
+		RootIndex: rootIndex,
+		Subject:   subject,
+	}
+	mock.lockQuickActionsFor.Lock()
+	mock.calls.QuickActionsFor = append(mock.calls.QuickActionsFor, callInfo)
+	mock.lockQuickActionsFor.Unlock()
+	return mock.QuickActionsForFunc(rootIndex, subject)
+}
+
+// QuickActionsForCalls gets all the calls that were made to QuickActionsFor.
+// Check the length with:
+//
+//	len(mockedEngineer.QuickActionsForCalls())
+func (mock *MockEngineer) QuickActionsForCalls() []struct {
+	RootIndex int
+	Subject   models.SubjectKind
+} {
+	var calls []struct {
+		RootIndex int
+		Subject   models.SubjectKind
+	}
+	mock.lockQuickActionsFor.RLock()
+	calls = mock.calls.QuickActionsFor
+	mock.lockQuickActionsFor.RUnlock()
 	return calls
 }
 

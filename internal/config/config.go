@@ -37,6 +37,11 @@ type Config struct {
 
 	// GitHub controls GitHub API integration (requires GITHUB_TOKEN or GH_TOKEN).
 	GitHub GitHubConfig
+
+	// QuickActions are user-configured shell commands that can be launched
+	// from the TUI by pressing Ctrl+K. These are global defaults; per-root
+	// overrides may be set in [RootConfig.QuickActions] and merge by name.
+	QuickActions []QuickActionConfig `mapstructure:"quick-actions,omitempty"`
 }
 
 // GitHubConfig controls GitHub API integration.
@@ -85,6 +90,12 @@ type RootConfig struct {
 	// GitHub overrides the global GitHub config for this root.
 	// nil means inherit the global default.
 	GitHub *GitHubConfig `mapstructure:",omitempty"`
+
+	// QuickActions overrides the global quick actions for this root.
+	// Entries are merged with the global list by name: a per-root entry
+	// with the same name as a global one replaces it for this root only;
+	// new names are added; globals not overridden remain in effect.
+	QuickActions []QuickActionConfig `mapstructure:"quick-actions,omitempty"`
 }
 
 // DefaultMaxDepth is the depth used when a root does not set MaxDepth
@@ -127,6 +138,50 @@ type ActionConfig struct {
 type RootRulesOverride struct {
 	// Disable lists check names to exclude for this root.
 	Disable []string
+}
+
+// QuickActionConfig describes a user-defined shell command that can be
+// launched from the TUI via the quick-actions popup (Ctrl+K).
+//
+// The command is spawned detached — git-janitor does not wait for it to
+// finish, and its stdio is not redirected to the TUI. Args may contain
+// placeholders such as {{repo}}, {{workdir}}, or {{subject}} which are
+// substituted at execution time from the current selection.
+type QuickActionConfig struct {
+	// Subject is the kind of element this action operates on, as a string
+	// matching [models.SubjectKind.String] (e.g. "repo", "branch").
+	Subject string
+
+	// Name uniquely identifies the action within its scope (global or root).
+	Name string
+
+	// Description is a short, human-readable hint shown in the popup list.
+	Description string
+
+	// Command is the executable name followed by its arguments. The first
+	// element is resolved against $PATH; subsequent elements support
+	// placeholder substitution.
+	//
+	// When InitCommands is non-empty, the special placeholder {{init-file}}
+	// is replaced with the path to a generated bash init script.
+	Command []string
+
+	// PreCommands lists shell commands executed synchronously in the
+	// repository's working directory *before* the terminal is spawned.
+	//
+	// Use this for setup steps that must succeed before the terminal opens
+	// (e.g. creating a git worktree). Placeholder substitution applies.
+	// If any pre-command fails, the quick action is aborted and the error
+	// is reported in the status bar.
+	PreCommands []string `mapstructure:"pre-commands,omitempty"`
+
+	// InitCommands lists shell commands to execute inside the spawned
+	// terminal after the standard preamble (source ~/.bashrc, set title,
+	// cd into the working directory).
+	//
+	// When non-empty, a temporary init script is generated and the
+	// {{init-file}} placeholder in Command is resolved to its path.
+	InitCommands []string `mapstructure:"init-commands,omitempty"`
 }
 
 // Repository describes a single git repository discovered on disk.
@@ -207,6 +262,46 @@ func (c *Config) EnabledChecks(rootIndex int) []string {
 	}
 
 	return enabled
+}
+
+// QuickActionsForRoot returns the effective quick actions for the given
+// root index, merging the global list with the per-root override by name.
+//
+// Per-root entries override globals with the same name; new per-root entries
+// are appended; globals not overridden are kept. The returned slice is a
+// fresh copy and may be safely mutated by the caller.
+func (c *Config) QuickActionsForRoot(rootIndex int) []QuickActionConfig {
+	merged := make([]QuickActionConfig, 0, len(c.QuickActions))
+
+	overrideByName := map[string]QuickActionConfig{}
+	if rootIndex >= 0 && rootIndex < len(c.Roots) {
+		for _, qa := range c.Roots[rootIndex].RootConfig.QuickActions {
+			overrideByName[qa.Name] = qa
+		}
+	}
+
+	seen := make(map[string]bool, len(c.QuickActions)+len(overrideByName))
+
+	for _, qa := range c.QuickActions {
+		if override, ok := overrideByName[qa.Name]; ok {
+			merged = append(merged, override)
+		} else {
+			merged = append(merged, qa)
+		}
+
+		seen[qa.Name] = true
+	}
+
+	// Append per-root entries that did not override any global.
+	if rootIndex >= 0 && rootIndex < len(c.Roots) {
+		for _, qa := range c.Roots[rootIndex].RootConfig.QuickActions {
+			if !seen[qa.Name] {
+				merged = append(merged, qa)
+			}
+		}
+	}
+
+	return merged
 }
 
 // IsActionAuto reports whether the named action is configured for
@@ -307,8 +402,10 @@ func LoadDefault() (*Config, error) {
 	fsys := os.DirFS(filepath.Dir(path))
 	pth := filepath.Join(".", filepath.Base(path))
 
-	// Snapshot the default rules before the user config overwrites slices.
+	// Snapshot the default rules and quick actions before the user config
+	// overwrites slices.
 	defaultRules := copyRules(defaults.Defaults.Rules)
+	defaultQuickActions := append([]QuickActionConfig(nil), defaults.QuickActions...)
 
 	result, err := load(fsys, pth, defaults)
 	if err != nil {
@@ -321,6 +418,10 @@ func LoadDefault() (*Config, error) {
 
 	// Merge: add default checks/actions not present in the user config.
 	mergeRules(result, defaultRules)
+
+	// Merge: add default quick actions not present in the user config so
+	// that newly added built-in entries are picked up automatically.
+	result.QuickActions = mergeQuickActions(result.QuickActions, defaultQuickActions)
 
 	return result, nil
 }
@@ -364,6 +465,23 @@ func mergeChecks(user, defaults []CheckConfig) []CheckConfig {
 	for _, c := range defaults {
 		if !existing[c.Name] {
 			user = append(user, c)
+		}
+	}
+
+	return user
+}
+
+// mergeQuickActions appends any default quick actions not already present in
+// the user list, matched by name. Existing user entries are preserved as-is.
+func mergeQuickActions(user, defaults []QuickActionConfig) []QuickActionConfig {
+	existing := make(map[string]bool, len(user))
+	for _, qa := range user {
+		existing[qa.Name] = true
+	}
+
+	for _, qa := range defaults {
+		if !existing[qa.Name] {
+			user = append(user, qa)
 		}
 	}
 

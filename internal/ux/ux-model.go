@@ -3,6 +3,7 @@ package ux
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -37,17 +38,28 @@ const (
 	app       = "git-janitor"
 )
 
+// Layout constants shared by [Model.recalcLayout] and the quick-actions
+// anchoring helpers. They are extracted as named constants so the linter
+// doesn't flag them as magic numbers and they remain in sync.
+const (
+	uxInputHeight            = 3
+	uxStatusHeight           = 2
+	uxMinPanelHeight         = 4
+	quickActionsHalfWidthDiv = 2
+)
+
 // Model represents the top-level state of the TUI.
 type Model struct {
 	options
 
-	Repos  repos.Panel
-	Right  infos.Panel
-	Input  commands.Input
-	Status statusbar.StatusBar
-	Help   help.Popup
-	Detail gadgets.DetailPopup
-	Wizard wizard.ConfigWizard
+	Repos        repos.Panel
+	Right        infos.Panel
+	Input        commands.Input
+	Status       statusbar.StatusBar
+	Help         help.Popup
+	Detail       gadgets.DetailPopup
+	Wizard       wizard.ConfigWizard
+	QuickActions gadgets.QuickActionsPopup
 
 	Focused      Pane
 	Width        int
@@ -84,6 +96,7 @@ func New(opts ...Option) *Model {
 	m.Help = help.New(theme)
 	m.Detail = gadgets.NewDetailPopup(theme)
 	m.Wizard = wizard.New(o.Cfg)
+	m.QuickActions = gadgets.NewQuickActionsPopup(theme)
 
 	return m
 }
@@ -236,6 +249,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	kb := key.MsgBinding(msg)
 
+	// When the quick-actions popup is visible it owns input until the user
+	// picks an entry or dismisses it. Quit (Ctrl+C / Ctrl+Q) still escapes.
+	if m.QuickActions.Visible {
+		if kb.Quit() {
+			m.Quitting = true
+
+			return m, tea.Quit
+		}
+
+		return m.handleQuickActionsKey(msg)
+	}
+
 	// When the right panel has an active text input (e.g. param prompt),
 	// forward all keys directly except quit — the input needs to capture
 	// letters, arrows, etc. that would otherwise trigger panel navigation.
@@ -257,6 +282,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.Quitting = true
 
 		return m, tea.Quit
+
+	case key.CtrlK:
+		return m.openQuickActions()
 
 	case key.CtrlH:
 		if m.Help.Visible {
@@ -918,7 +946,222 @@ func (m *Model) View() string {
 		return m.Wizard.View(m.Width, m.Height)
 	}
 
+	// Overlay the quick-actions popup when visible. Unlike the other
+	// popups it is not centered: it is spliced into the existing frame at
+	// the cursor position so the user keeps the panel context in view.
+	if m.QuickActions.Visible {
+		base = gadgets.Overlay(
+			base,
+			m.QuickActions.View(),
+			m.QuickActions.AnchorX,
+			m.QuickActions.AnchorY,
+			m.QuickActions.PanelX,
+			m.QuickActions.PanelWidth,
+			m.Width,
+		)
+	}
+
 	return base
+}
+
+// quickActionsLayout groups the layout constants used by the quick-actions
+// popup placement helpers, so they're not flagged as magic numbers.
+const (
+	quickActionsBorderRows  = 2 // popup top + bottom border
+	quickActionsPanelInsetX = 2 // border + 1-cell padding
+	quickActionsRightCursor = 2 // anchor row inside the right panel (border + tab bar)
+	quickActionsMinAnchorY  = 1 // minimum anchor row inside any panel
+)
+
+// openQuickActions builds the popup contents for the current focus context
+// and shows it. When the focus is not associated with a runnable subject,
+// it sets a status message instead.
+//
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
+func (m *Model) openQuickActions() (tea.Model, tea.Cmd) {
+	subject, ok := m.quickActionsSubject()
+	if !ok {
+		m.Status.SetMessage("Quick actions are not available for this view.")
+
+		return m, nil
+	}
+
+	repo, ok := m.Repos.SelectedRepo()
+	if !ok || !repo.IsGit {
+		m.Status.SetMessage("Select a git repository first.")
+
+		return m, nil
+	}
+
+	if m.Engine == nil {
+		return m, nil
+	}
+
+	var items []gadgets.QuickActionItem
+	for qa := range m.Engine.QuickActionsFor(m.SelectedRoot, subject) {
+		items = append(items, gadgets.QuickActionItem{
+			Name:        qa.DisplayName(),
+			Description: qa.Description(),
+		})
+	}
+
+	if len(items) == 0 {
+		m.Status.SetMessagef("No quick actions configured for subject %q.", subject.String())
+
+		return m, nil
+	}
+
+	anchorX, anchorY, panelX, panelWidth := m.quickActionsAnchor(len(items))
+	m.QuickActions.Show(items, anchorX, anchorY, panelX, panelWidth)
+
+	return m, nil
+}
+
+// quickActionsSubject returns the subject kind eligible for quick actions
+// based on the currently focused panel and tab. The boolean is false when
+// no quick action subject is supported in the current context.
+func (m *Model) quickActionsSubject() (models.SubjectKind, bool) {
+	switch m.Focused {
+	case paneRepos:
+		return models.SubjectRepo, true
+	case paneRight:
+		switch m.Right.Active {
+		case infos.TabFacts:
+			return models.SubjectRepo, true
+		case infos.TabBranches:
+			return models.SubjectBranch, true
+		default:
+			return models.SubjectNone, false
+		}
+	case paneInput:
+		return models.SubjectNone, false
+	default:
+		return models.SubjectNone, false
+	}
+}
+
+// quickActionsAnchor returns the absolute (anchorX, anchorY) where the
+// popup should be drawn, plus the horizontal bounds (panelX, panelWidth)
+// of the focused panel so the popup can be kept inside.
+//
+// Vertical placement: just below the cursor row when there is room,
+// otherwise just above so the popup never overflows the panel.
+func (m *Model) quickActionsAnchor(itemCount int) (int, int, int, int) {
+	popupHeight := itemCount + quickActionsBorderRows
+	halfWidth := m.Width / quickActionsHalfWidthDiv
+	panelHeight := max(m.Height-uxInputHeight-uxStatusHeight, uxMinPanelHeight)
+
+	var (
+		panelX     int
+		panelWidth int
+		cursorRow  int
+	)
+
+	switch m.Focused {
+	case paneRepos:
+		panelX = 0
+		panelWidth = halfWidth
+		cursorRow = m.Repos.CursorScreenRow()
+	case paneRight:
+		panelX = halfWidth
+		panelWidth = m.Width - halfWidth
+
+		switch m.Right.Active {
+		case infos.TabBranches:
+			// Anchor relative to the selected branch row.
+			// Add 2 (border + tab bar) to the branches panel's content-relative cursor row.
+			cursorRow = quickActionsRightCursor + m.Right.BranchesCursorScreenRow()
+		default:
+			// The Facts tab (and others) have no list cursor; anchor just below the tab bar.
+			cursorRow = quickActionsRightCursor
+		}
+	case paneInput:
+		panelX = 0
+		panelWidth = m.Width
+		cursorRow = quickActionsMinAnchorY
+	default:
+		panelX = 0
+		panelWidth = m.Width
+		cursorRow = quickActionsMinAnchorY
+	}
+
+	anchorX := panelX + quickActionsPanelInsetX
+	anchorY := cursorRow + 1 // one row below the cursor row
+
+	// Flip above when there isn't enough room below.
+	if anchorY+popupHeight > panelHeight {
+		anchorY = max(cursorRow-popupHeight, quickActionsMinAnchorY)
+	}
+
+	return anchorX, anchorY, panelX, panelWidth
+}
+
+// handleQuickActionsKey routes keys to the quick-actions popup and runs
+// the selected action when the user presses Enter.
+//
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
+func (m *Model) handleQuickActionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	cmd, _ := m.QuickActions.Update(msg)
+
+	if sel := m.QuickActions.TakeSelection(); sel != nil {
+		return m, tea.Batch(cmd, m.runQuickAction(sel.Name))
+	}
+
+	return m, cmd
+}
+
+// runQuickAction asks the engine to spawn the named quick action for the
+// currently selected repo, returning a tea.Cmd that posts the result to the
+// status bar.
+func (m *Model) runQuickAction(name string) tea.Cmd {
+	if m.Engine == nil {
+		return nil
+	}
+
+	repo, ok := m.Repos.SelectedRepo()
+	if !ok {
+		m.Status.SetMessage("No repository selected.")
+
+		return nil
+	}
+
+	params := map[string]string{
+		"repo":    repo.Name,
+		"workdir": repo.Path,
+		"subject": repo.Path,
+	}
+
+	// When the quick action operates on a branch, resolve the subject from
+	// the selected branch in the Branches tab.
+	subject, _ := m.quickActionsSubject()
+	if subject == models.SubjectBranch {
+		branch, ok := m.Right.SelectedBranch()
+		if !ok {
+			m.Status.SetMessage("No branch selected.")
+
+			return nil
+		}
+
+		params["subject"] = branch.Name
+		params["branch"] = branch.Name
+
+		// Provide a {{worktree}} placeholder for actions that create a
+		// git worktree. The path is deterministic so re-running the same
+		// action for the same branch reuses the same directory.
+		safeBranch := strings.ReplaceAll(branch.Name, "/", "-")
+		params["worktree"] = filepath.Join(repo.Path, ".git-janitor-worktrees", safeBranch)
+	}
+
+	rootIndex := m.SelectedRoot
+	engine := m.Engine
+
+	return func() tea.Msg {
+		if err := engine.ExecuteQuickAction(context.Background(), rootIndex, name, params); err != nil {
+			return uxtypes.CommandResult{Output: fmt.Sprintf("Quick action %q failed: %v", name, err)}
+		}
+
+		return uxtypes.CommandResult{Output: fmt.Sprintf("Quick action %q started.", name)}
+	}
 }
 
 // normalizeViewLines ensures a rendered string has exactly targetLines lines.
@@ -1060,4 +1303,5 @@ func (m *Model) setTheme() {
 	m.Status.Theme = theme
 	m.Help.Theme = theme
 	m.Detail.Theme = theme
+	m.QuickActions.Theme = theme
 }

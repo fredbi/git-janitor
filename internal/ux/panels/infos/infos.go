@@ -103,6 +103,19 @@ func (p *Panel) SetActivityData(info *models.RepoInfo) {
 	p.Activity.SetData(info)
 }
 
+// SelectedBranch returns the branch currently highlighted in the Branches
+// tab. Returns false when the Branches tab is empty or no branch is selected.
+func (p *Panel) SelectedBranch() (models.Branch, bool) {
+	return p.Branches.SelectedBranch()
+}
+
+// BranchesCursorScreenRow returns the cursor row within the Branches panel's
+// content area (header-relative). The model adds the panel's y-offset for
+// absolute positioning.
+func (p *Panel) BranchesCursorScreenRow() int {
+	return p.Branches.CursorScreenRow()
+}
+
 // CycleTab advances the active tab forward by one.
 func (p *Panel) CycleTab() {
 	p.Active = RightTab((int(p.Active) + 1) % RightTabCount)
