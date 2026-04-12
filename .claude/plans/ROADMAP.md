@@ -32,7 +32,7 @@ new feature domains (Phase 3) toward AI-assisted and semi-autonomous operation (
 
   📝 **`...more...` indicator accuracy** for paginated GitHub data
   📝 **git gc: prune unreachable refs** + informative-only when < 10MB
-  📝 **After branch deletion: fetch with `--prune`** so remotes update
+  🔨 **After branch deletion: fetch with `--prune`** so remotes update
   📝 **Activity tab**: needs UX refactoring (pagination done but layout needs work)
   📝 **check upstream rebase shows even when no refresh, whereas local rebase don't
 
