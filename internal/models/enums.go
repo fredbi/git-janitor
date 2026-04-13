@@ -7,6 +7,7 @@ type RunnerKind uint8
 const (
 	RunnerKindGit = iota
 	RunnerKindGitHub
+	RunnerKindGitLab
 )
 
 type RepoKind string
@@ -41,16 +42,16 @@ const (
 type SubjectKind uint8
 
 const (
-	SubjectNone   SubjectKind = iota // no specific subject (repo-level)
-	SubjectRepo                      // the repository itself
-	SubjectRemote                    // a git remote
-	SubjectBranch                    // a git branch
-	SubjectStash                     // a git stash entry
-	SubjectTag                       // a git tag
-	SubjectFile                      // a git file object
-	SubjectIssues                    // GitHub issues (paginated list)
-	SubjectPullRequests              // GitHub pull requests (paginated list)
-	SubjectWorkflowRuns              // GitHub workflow runs (paginated list)
+	SubjectNone         SubjectKind = iota // no specific subject (repo-level)
+	SubjectRepo                            // the repository itself
+	SubjectRemote                          // a git remote
+	SubjectBranch                          // a git branch
+	SubjectStash                           // a git stash entry
+	SubjectTag                             // a git tag
+	SubjectFile                            // a git file object
+	SubjectIssues                          // issues (paginated list)
+	SubjectPullRequests                    // pull requests / merge requests (paginated list)
+	SubjectWorkflowRuns                    // workflow runs / pipelines (paginated list)
 )
 
 // String returns the human-readable name of a SubjectKind.
@@ -145,7 +146,7 @@ type CheckKind uint8
 const (
 	CheckKindGit    CheckKind = iota // git CLI check
 	CheckKindGitHub                  // GitHub API check
-	CheckKindGitLab                  // GitLab API check (future)
+	CheckKindGitLab                  // GitLab API check
 	CheckKindCustom                  // external/custom check (Phase 3)
 )
 
@@ -155,6 +156,7 @@ type ActionKind uint8
 const (
 	ActionKindGit    ActionKind = iota // git CLI action
 	ActionKindGitHub                   // GitHub API action
+	ActionKindGitLab                   // GitLab API action
 	ActionKindCustom                   // external/custom action (Phase 3)
 )
 

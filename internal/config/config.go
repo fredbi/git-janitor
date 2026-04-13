@@ -42,6 +42,9 @@ type Config struct {
 	// GitHub controls GitHub API integration (requires GITHUB_TOKEN or GH_TOKEN).
 	GitHub GitHubConfig
 
+	// GitLab controls GitLab API integration (requires GITLAB_TOKEN or GL_TOKEN).
+	GitLab GitLabConfig
+
 	// QuickActions are user-configured shell commands that can be launched
 	// from the TUI by pressing Ctrl+K. These are global defaults; per-root
 	// overrides may be set in [RootConfig.QuickActions] and merge by name.
@@ -57,6 +60,21 @@ type GitHubConfig struct {
 	// SecurityAlerts controls whether security alert APIs are queried.
 	// When false, security checks are skipped and the Facts tab shows "not queried".
 	// Default: true.
+	SecurityAlerts *bool `mapstructure:"securityAlerts,omitempty"`
+}
+
+// GitLabConfig controls GitLab API integration.
+type GitLabConfig struct {
+	// Enabled controls whether GitLab API checks are attempted.
+	// Default: true.
+	Enabled bool
+
+	// BaseURL is the GitLab instance URL (e.g. "https://gitlab.example.com").
+	// When empty, the base URL is auto-derived from the repository's remote URL.
+	BaseURL string `mapstructure:"baseURL,omitempty"`
+
+	// SecurityAlerts controls whether vulnerability APIs are queried.
+	// Requires GitLab Ultimate. Default: false.
 	SecurityAlerts *bool `mapstructure:"securityAlerts,omitempty"`
 }
 
@@ -94,6 +112,10 @@ type RootConfig struct {
 	// GitHub overrides the global GitHub config for this root.
 	// nil means inherit the global default.
 	GitHub *GitHubConfig `mapstructure:",omitempty"`
+
+	// GitLab overrides the global GitLab config for this root.
+	// nil means inherit the global default.
+	GitLab *GitLabConfig `mapstructure:",omitempty"`
 
 	// QuickActions overrides the global quick actions for this root.
 	// Entries are merged with the global list by name: a per-root entry
@@ -355,6 +377,51 @@ func (c *Config) GitHubSecurityAlerts(rootIndex int) bool {
 	}
 
 	return true // default
+}
+
+// GitLabEnabled reports whether GitLab API checks are enabled for the given root.
+//
+// Per-root override takes precedence over the global default.
+// If no override is set, the global GitLab.Enabled value is used.
+func (c *Config) GitLabEnabled(rootIndex int) bool {
+	if rootIndex >= 0 && rootIndex < len(c.Roots) {
+		if override := c.Roots[rootIndex].RootConfig.GitLab; override != nil {
+			return override.Enabled
+		}
+	}
+
+	return c.GitLab.Enabled
+}
+
+// GitLabSecurityAlerts reports whether vulnerability APIs should be queried
+// for the given root. Per-root override takes precedence over the global default.
+// Default is false when not explicitly set (requires GitLab Ultimate).
+func (c *Config) GitLabSecurityAlerts(rootIndex int) bool {
+	if rootIndex >= 0 && rootIndex < len(c.Roots) {
+		if override := c.Roots[rootIndex].RootConfig.GitLab; override != nil && override.SecurityAlerts != nil {
+			return *override.SecurityAlerts
+		}
+	}
+
+	if c.GitLab.SecurityAlerts != nil {
+		return *c.GitLab.SecurityAlerts
+	}
+
+	return false // default — requires GitLab Ultimate
+}
+
+// GitLabBaseURL returns the configured GitLab API base URL for the given root.
+//
+// Per-root override takes precedence over the global default.
+// Returns empty string when not explicitly set (the caller auto-derives from the remote URL).
+func (c *Config) GitLabBaseURL(rootIndex int) string {
+	if rootIndex >= 0 && rootIndex < len(c.Roots) {
+		if override := c.Roots[rootIndex].RootConfig.GitLab; override != nil && override.BaseURL != "" {
+			return override.BaseURL
+		}
+	}
+
+	return c.GitLab.BaseURL
 }
 
 // DefaultConfigPath returns the full path to the configuration file

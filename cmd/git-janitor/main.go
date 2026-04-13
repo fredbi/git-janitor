@@ -10,6 +10,7 @@ import (
 	"github.com/fredbi/git-janitor/internal/engine"
 	"github.com/fredbi/git-janitor/internal/git"
 	"github.com/fredbi/git-janitor/internal/github"
+	"github.com/fredbi/git-janitor/internal/gitlab"
 	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/registry"
 	"github.com/fredbi/git-janitor/internal/store"
@@ -78,12 +79,12 @@ func main() {
 
 	// registers all supported checks
 	checks := registry.New[ifaces.Check](
-		registry.With(git.AllChecks(), github.AllChecks()),
+		registry.With(git.AllChecks(), github.AllChecks(), gitlab.AllChecks()),
 	)
 
 	// registers all supported actions
 	actions := registry.New[ifaces.Action](
-		registry.With(git.AllActions(), github.AllActions()),
+		registry.With(git.AllActions(), github.AllActions(), gitlab.AllActions()),
 	)
 
 	// injects all dependencies into the UI model

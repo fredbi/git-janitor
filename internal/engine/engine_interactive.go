@@ -12,6 +12,7 @@ import (
 	"github.com/fredbi/git-janitor/internal/config"
 	gitbackend "github.com/fredbi/git-janitor/internal/git/backend"
 	githubbackend "github.com/fredbi/git-janitor/internal/github/backend"
+	gitlabbackend "github.com/fredbi/git-janitor/internal/gitlab/backend"
 	"github.com/fredbi/git-janitor/internal/ifaces"
 	"github.com/fredbi/git-janitor/internal/models"
 	"github.com/fredbi/git-janitor/internal/quickactions"
@@ -30,6 +31,12 @@ type Interactive struct {
 	// githubClient is lazily initialized on first use.
 	// nil means not yet initialized (not that GitHub is unavailable).
 	githubClient *githubbackend.Client
+
+	// gitlabClients is lazily initialized per base URL.
+	// Multiple GitLab instances may be contacted simultaneously
+	// (e.g. gitlab.com and an enterprise instance), so we keep
+	// one Client per base URL.
+	gitlabClients map[string]*gitlabbackend.Client
 }
 
 // NewInteractive creates a new Interactive engine.
@@ -63,6 +70,11 @@ func (e *Interactive) Evaluate(
 
 		// Skip GitHub checks if no platform data is available (neither origin nor upstream).
 		if check.Kind() == models.CheckKindGitHub && info.Platform == nil && info.UpstreamPlatform == nil {
+			continue
+		}
+
+		// Skip GitLab checks if no platform data is available (neither origin nor upstream).
+		if check.Kind() == models.CheckKindGitLab && info.Platform == nil && info.UpstreamPlatform == nil {
 			continue
 		}
 
@@ -311,7 +323,7 @@ func (e *Interactive) Refresh(ctx context.Context, info *models.RepoInfo) *model
 }
 
 // ProviderEnabled reports whether the named provider is available.
-// Currently supports "github" (config enabled + token present).
+// Currently supports "github" and "gitlab" (config enabled + token present).
 func (e *Interactive) ProviderEnabled(provider string) bool {
 	switch provider {
 	case "github":
@@ -322,6 +334,19 @@ func (e *Interactive) ProviderEnabled(provider string) bool {
 		client := e.getGitHubClient()
 
 		return client != nil && client.Available()
+	case "gitlab":
+		if !e.cfg.GitLab.Enabled {
+			return false
+		}
+
+		// GitLab uses per-instance clients, but token availability is shared.
+		// Check with the default base URL.
+		client := e.getGitLabClient("")
+		if client == nil {
+			return false
+		}
+
+		return client.Available()
 	default:
 		return false
 	}
@@ -366,11 +391,18 @@ func (e *Interactive) ExecuteQuickAction(
 
 // collectPlatform fetches hosting-platform metadata if applicable.
 func (e *Interactive) collectPlatform(ctx context.Context, info *models.RepoInfo, hasOpt map[models.CollectOption]bool) *models.RepoInfo {
-	// Check that the repo is on a supported platform.
-	if info.SCM != models.SCMGitHub {
+	switch info.SCM {
+	case models.SCMGitHub:
+		return e.collectGitHubPlatform(ctx, info, hasOpt)
+	case models.SCMGitLab:
+		return e.collectGitLabPlatform(ctx, info, hasOpt)
+	default:
 		return info
 	}
+}
 
+// collectGitHubPlatform fetches GitHub hosting-platform metadata.
+func (e *Interactive) collectGitHubPlatform(ctx context.Context, info *models.RepoInfo, hasOpt map[models.CollectOption]bool) *models.RepoInfo {
 	// Check per-root config.
 	if !e.cfg.GitHubEnabled(info.RootIndex) {
 		return info
@@ -431,6 +463,86 @@ func (e *Interactive) collectPlatform(ctx context.Context, info *models.RepoInfo
 	return info
 }
 
+// collectGitLabPlatform fetches GitLab hosting-platform metadata.
+func (e *Interactive) collectGitLabPlatform(ctx context.Context, info *models.RepoInfo, hasOpt map[models.CollectOption]bool) *models.RepoInfo {
+	// Check per-root config.
+	if !e.cfg.GitLabEnabled(info.RootIndex) {
+		return info
+	}
+
+	// Resolve origin URL.
+	originURL := models.OriginFetchURL(info.Remotes)
+	if originURL == "" {
+		return info
+	}
+
+	// Parse project path from URL.
+	projectPath, err := gitlabbackend.ExtractProjectPath(originURL)
+	if err != nil {
+		return info
+	}
+
+	// Auto-derive base URL from the remote, with optional config override.
+	baseURL, err := gitlabbackend.ExtractBaseURL(originURL)
+	if err != nil {
+		return info
+	}
+
+	if override := e.cfg.GitLabBaseURL(info.RootIndex); override != "" {
+		baseURL = override
+	}
+
+	client := e.getGitLabClient(baseURL)
+	if client == nil || !client.Available() {
+		return info
+	}
+
+	fetchOpts := gitlabbackend.FetchOptions{
+		ForceRefresh:  hasOpt[models.CollectForceRefresh],
+		FetchSecurity: e.cfg.GitLabSecurityAlerts(info.RootIndex),
+	}
+
+	platform := client.Fetch(ctx, projectPath, fetchOpts)
+	if platform != nil {
+		// Inject local default branch for cross-check.
+		platform.LocalDefaultBranch = info.DefaultBranch
+
+		// Preserve activity data from the previous Platform if it exists.
+		if old := info.Platform; old != nil {
+			platform.Issues = old.Issues
+			platform.PullRequests = old.PullRequests
+			platform.WorkflowRuns = old.WorkflowRuns
+		}
+
+		info.Platform = platform
+	}
+
+	// Also collect upstream platform data if an upstream remote exists.
+	upstreamURL := models.UpstreamFetchURL(info.Remotes)
+	if upstreamURL != "" {
+		upPath, upErr := gitlabbackend.ExtractProjectPath(upstreamURL)
+		if upErr == nil {
+			upBase, upBaseErr := gitlabbackend.ExtractBaseURL(upstreamURL)
+			if upBaseErr == nil {
+				if override := e.cfg.GitLabBaseURL(info.RootIndex); override != "" {
+					upBase = override
+				}
+
+				upClient := e.getGitLabClient(upBase)
+				if upClient != nil && upClient.Available() {
+					upstream := upClient.Fetch(ctx, upPath, fetchOpts)
+					if upstream != nil {
+						upstream.LocalDefaultBranch = info.DefaultBranch
+						info.UpstreamPlatform = upstream
+					}
+				}
+			}
+		}
+	}
+
+	return info
+}
+
 // getGitHubClient lazily initializes the GitHub client.
 func (e *Interactive) getGitHubClient() *githubbackend.Client {
 	if e.githubClient == nil {
@@ -438,6 +550,29 @@ func (e *Interactive) getGitHubClient() *githubbackend.Client {
 	}
 
 	return e.githubClient
+}
+
+// getGitLabClient lazily initializes and returns a GitLab client for the given base URL.
+//
+// Multiple clients may exist simultaneously (one per GitLab instance).
+// If baseURL is empty, defaults to "https://gitlab.com".
+func (e *Interactive) getGitLabClient(baseURL string) *gitlabbackend.Client {
+	if baseURL == "" {
+		baseURL = "https://gitlab.com"
+	}
+
+	if e.gitlabClients == nil {
+		e.gitlabClients = make(map[string]*gitlabbackend.Client)
+	}
+
+	if client, ok := e.gitlabClients[baseURL]; ok {
+		return client
+	}
+
+	client := gitlabbackend.NewClient(baseURL)
+	e.gitlabClients[baseURL] = client
+
+	return client
 }
 
 // withRunnerForAction creates a runner appropriate for the action's kind
@@ -457,6 +592,22 @@ func (e *Interactive) withRunnerForAction(ctx context.Context, action ifaces.Act
 		}
 
 		runner := &githubbackend.Runner{Client: client}
+
+		return ifaces.WithRunner(ctx, runner), nil
+
+	case models.ActionKindGitLab:
+		// GitLab actions need a base URL — derive from the repo's platform data.
+		baseURL := ""
+		if info.Platform != nil && info.Platform.WebURL != "" {
+			baseURL = info.Platform.WebURL
+		}
+
+		client := e.getGitLabClient(baseURL)
+		if client == nil || !client.Available() {
+			return ctx, fmt.Errorf("engine: GitLab token not available for action %q", action.Name())
+		}
+
+		runner := &gitlabbackend.Runner{Client: client}
 
 		return ifaces.WithRunner(ctx, runner), nil
 

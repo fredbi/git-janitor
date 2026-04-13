@@ -10,10 +10,12 @@ import "time"
 // that don't generalize across platforms are nil/zero when not applicable.
 type PlatformInfo struct {
 	// Identity.
-	Owner    string
-	Repo     string
-	FullName string // "owner/repo"
-	HTMLURL  string
+	Owner     string
+	Repo      string
+	FullName  string // "owner/repo" or "group/subgroup/project"
+	HTMLURL   string
+	ProjectID int    // GitLab integer project ID (0 for GitHub)
+	WebURL    string // Base URL of the hosting instance (e.g. "https://gitlab.example.com")
 
 	// Metadata.
 	Description   string
@@ -83,9 +85,9 @@ type PlatformInfo struct {
 // (not fetched).
 func NewPlatformInfo(owner, repo string) *PlatformInfo {
 	return &PlatformInfo{
-		Owner:                owner,
-		Repo:                 repo,
-		FullName:             owner + "/" + repo,
+		Owner:                  owner,
+		Repo:                   repo,
+		FullName:               owner + "/" + repo,
 		UnrespondedIssues:      -1,
 		PendingReviewPRs:       -1,
 		DependabotAlerts:       -1,
