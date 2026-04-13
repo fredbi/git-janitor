@@ -45,6 +45,22 @@ type Config struct {
 	// GitLab controls GitLab API integration (requires GITLAB_TOKEN or GL_TOKEN).
 	GitLab GitLabConfig
 
+	// SCMPatterns maps SCM provider names ("github", "gitlab") to regular expressions
+	// that match hostnames of enterprise/self-hosted instances.
+	//
+	// These patterns extend (not replace) the built-in heuristics which match hosts
+	// containing "github." or "gitlab." in their name.
+	//
+	// Example: a GitLab Enterprise instance at scm-premium.saas.cagip.group.gca
+	// would need:
+	//
+	//   scmPatterns:
+	//     gitlab: "scm-premium\\.saas\\.cagip"
+	//
+	// Values are Go regular expressions matched against the full hostname.
+	// Keys must be "github" or "gitlab".
+	SCMPatterns map[string]string `mapstructure:"scmPatterns,omitempty"`
+
 	// QuickActions are user-configured shell commands that can be launched
 	// from the TUI by pressing Ctrl+K. These are global defaults; per-root
 	// overrides may be set in [RootConfig.QuickActions] and merge by name.

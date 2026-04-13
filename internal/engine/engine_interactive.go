@@ -37,12 +37,30 @@ type Interactive struct {
 	// (e.g. gitlab.com and an enterprise instance), so we keep
 	// one Client per base URL.
 	gitlabClients map[string]*gitlabbackend.Client
+
+	// scmOverrides holds compiled hostname patterns for SCM detection.
+	// Compiled once from [config.Config.SCMPatterns] at construction time
+	// and set on every git Runner the engine creates.
+	scmOverrides []gitbackend.SCMOverride
 }
 
 // NewInteractive creates a new Interactive engine.
 func NewInteractive(opts ...Option) *Interactive {
+	o := optionsWithDefaults(opts)
+
+	var overrides []gitbackend.SCMOverride
+	if o.cfg != nil && len(o.cfg.SCMPatterns) > 0 {
+		// Compile errors are logged but not fatal — fall back to built-in heuristics.
+		var err error
+		overrides, err = gitbackend.CompileSCMOverrides(o.cfg.SCMPatterns)
+		if err != nil {
+			overrides = nil // ignore bad patterns, log for debugging
+		}
+	}
+
 	return &Interactive{
-		options: optionsWithDefaults(opts),
+		options:      o,
+		scmOverrides: overrides,
 	}
 }
 
@@ -68,13 +86,19 @@ func (e *Interactive) Evaluate(
 			continue
 		}
 
-		// Skip GitHub checks if no platform data is available (neither origin nor upstream).
-		if check.Kind() == models.CheckKindGitHub && info.Platform == nil && info.UpstreamPlatform == nil {
+		// Skip GitHub checks if the repo is not GitHub or has no usable platform data.
+		if check.Kind() == models.CheckKindGitHub &&
+			(info.SCM != models.SCMGitHub ||
+				(info.Platform == nil || info.Platform.HasError()) &&
+					(info.UpstreamPlatform == nil || info.UpstreamPlatform.HasError())) {
 			continue
 		}
 
-		// Skip GitLab checks if no platform data is available (neither origin nor upstream).
-		if check.Kind() == models.CheckKindGitLab && info.Platform == nil && info.UpstreamPlatform == nil {
+		// Skip GitLab checks if the repo is not GitLab or has no usable platform data.
+		if check.Kind() == models.CheckKindGitLab &&
+			(info.SCM != models.SCMGitLab ||
+				(info.Platform == nil || info.Platform.HasError()) &&
+					(info.UpstreamPlatform == nil || info.UpstreamPlatform.HasError())) {
 			continue
 		}
 
@@ -199,7 +223,7 @@ func (e *Interactive) Collect(ctx context.Context, info *models.RepoInfo, opts .
 
 	// Git collection: when info has no git data yet.
 	if !info.IsGit && info.Path != "" {
-		runner := gitbackend.NewRunner(info.Path)
+		runner := e.newGitRunner(info.Path)
 
 		var collected *models.RepoInfo
 		if hasOpt[models.CollectFast] {
@@ -238,10 +262,10 @@ func (e *Interactive) CollectDetails(ctx context.Context, info *models.RepoInfo,
 
 	switch scope.SubjectKind {
 	case models.SubjectBranch:
-		runner := gitbackend.NewRunner(info.Path)
+		runner := e.newGitRunner(info.Path)
 		e.collectBranchDetails(ctx, runner, info, scope)
 	case models.SubjectStash:
-		runner := gitbackend.NewRunner(info.Path)
+		runner := e.newGitRunner(info.Path)
 		e.collectStashDetails(ctx, runner, info, scope)
 	case models.SubjectIssues:
 		e.collectIssueList(ctx, info, scope)
@@ -308,7 +332,7 @@ func (e *Interactive) Refresh(ctx context.Context, info *models.RepoInfo) *model
 		return info
 	}
 
-	runner := gitbackend.NewRunner(info.Path)
+	runner := e.newGitRunner(info.Path)
 	refreshed := runner.RefreshRepo(ctx)
 	refreshed.RootIndex = info.RootIndex
 	refreshed.CollectedAt = time.Now()
@@ -360,6 +384,16 @@ func (e *Interactive) Reload(cfg *config.Config) {
 
 	reg, _ := quickactions.BuildRegistry(cfg)
 	e.quickActions = reg
+
+	// Recompile SCM override patterns from the new config.
+	if len(cfg.SCMPatterns) > 0 {
+		overrides, err := gitbackend.CompileSCMOverrides(cfg.SCMPatterns)
+		if err == nil {
+			e.scmOverrides = overrides
+		}
+	} else {
+		e.scmOverrides = nil
+	}
 }
 
 // QuickActionsFor returns the quick actions registered for the given root
@@ -543,6 +577,15 @@ func (e *Interactive) collectGitLabPlatform(ctx context.Context, info *models.Re
 	return info
 }
 
+// newGitRunner creates a git Runner for the given repo directory
+// with SCM override patterns pre-configured.
+func (e *Interactive) newGitRunner(dir string) *gitbackend.Runner {
+	r := gitbackend.NewRunner(dir)
+	r.SCMOverrides = e.scmOverrides
+
+	return r
+}
+
 // getGitHubClient lazily initializes the GitHub client.
 func (e *Interactive) getGitHubClient() *githubbackend.Client {
 	if e.githubClient == nil {
@@ -580,7 +623,7 @@ func (e *Interactive) getGitLabClient(baseURL string) *gitlabbackend.Client {
 func (e *Interactive) withRunnerForAction(ctx context.Context, action ifaces.Action, info *models.RepoInfo) (context.Context, error) {
 	switch action.Kind() {
 	case models.ActionKindGit:
-		runner := gitbackend.NewRunner(info.Path)
+		runner := e.newGitRunner(info.Path)
 		runner.StartLogging()
 
 		return ifaces.WithRunner(ctx, runner), nil

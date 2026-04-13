@@ -6,6 +6,12 @@ github:
 gitlab:
   enabled: true
   securityAlerts: false  # requires GitLab Ultimate, off by default
+# scmPatterns extends the built-in hostname heuristics for SCM detection.
+# Map SCM names ("github", "gitlab") to regexes matching enterprise hostnames.
+# Example:
+#   scmPatterns:
+#     gitlab: "scm-premium\\.saas\\.cagip"
+#     github: "git\\.mycorp\\.com"
 defaults:
   rootConfig:
     scheduleInterval: 5m

@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -13,6 +14,51 @@ var (
 	githubHostRe = regexp.MustCompile(`github\.(\w+)`)
 	gitlabHostRe = regexp.MustCompile(`gitlab\.(\w+)`)
 )
+
+// SCMOverride pairs a compiled hostname regex with the SCM provider it identifies.
+type SCMOverride struct {
+	Pattern *regexp.Regexp
+	SCM     models.RepoSCM
+}
+
+// CompileSCMOverrides compiles a map of SCM name → hostname regex into a slice of overrides.
+//
+// Keys must be valid SCM names ("github", "gitlab"). Unknown keys are rejected.
+// Invalid regex patterns return an error.
+func CompileSCMOverrides(patterns map[string]string) ([]SCMOverride, error) {
+	if len(patterns) == 0 {
+		return nil, nil
+	}
+
+	overrides := make([]SCMOverride, 0, len(patterns))
+
+	for name, pattern := range patterns {
+		scm, ok := scmNameToKind(name)
+		if !ok {
+			return nil, fmt.Errorf("unknown SCM provider %q in scmPatterns (valid: github, gitlab)", name)
+		}
+
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("invalid regex for SCM provider %q: %w", name, err)
+		}
+
+		overrides = append(overrides, SCMOverride{Pattern: re, SCM: scm})
+	}
+
+	return overrides, nil
+}
+
+func scmNameToKind(name string) (models.RepoSCM, bool) {
+	switch strings.ToLower(name) {
+	case "github":
+		return models.SCMGitHub, true
+	case "gitlab":
+		return models.SCMGitLab, true
+	default:
+		return "", false
+	}
+}
 
 // CollectRepoInfoFast gathers the essentials for displaying repo facts:
 // status, branches, remotes, stashes, default branch, traits, config,
@@ -63,7 +109,7 @@ func (r *Runner) CollectRepoInfoFast(ctx context.Context) *models.RepoInfo {
 	info.Config = &cfg
 
 	// Derive SCM and kind from remotes.
-	info.SCM = DeriveSCM(info.Remotes)
+	info.SCM = DeriveSCM(info.Remotes, r.SCMOverrides)
 	info.Kind = DeriveKind(info.Remotes)
 
 	return info
@@ -170,20 +216,31 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 	}
 
 	// Derive SCM and kind from remotes.
-	info.SCM = DeriveSCM(info.Remotes)
+	info.SCM = DeriveSCM(info.Remotes, r.SCMOverrides)
 	info.Kind = DeriveKind(info.Remotes)
 
 	return info
 }
 
 // DeriveSCM determines the SCM provider from the origin remote URL.
-func DeriveSCM(remotes []models.Remote) models.RepoSCM {
+//
+// User-configured overrides are checked first (in order), then the built-in
+// heuristics (hostnames containing "github." or "gitlab."). This allows
+// enterprise instances with non-standard hostnames to be correctly classified.
+func DeriveSCM(remotes []models.Remote, overrides []SCMOverride) models.RepoSCM {
 	originURL := models.OriginFetchURL(remotes)
 	if originURL == "" {
 		return models.SCMOther
 	}
 
 	host := ExtractHost(originURL)
+
+	// User-configured overrides take precedence.
+	for _, o := range overrides {
+		if o.Pattern.MatchString(host) {
+			return o.SCM
+		}
+	}
 
 	switch {
 	case githubHostRe.MatchString(host):

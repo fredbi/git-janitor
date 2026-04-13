@@ -99,6 +99,12 @@ func NewPlatformInfo(owner, repo string) *PlatformInfo {
 	}
 }
 
+// HasError reports whether the platform API call failed.
+// A nil PlatformInfo is considered to have no error.
+func (d *PlatformInfo) HasError() bool {
+	return d != nil && d.Err != nil
+}
+
 // SecurityAlerts returns the total count of open security alerts,
 // or -1 if none of the security APIs were queried.
 func (d *PlatformInfo) SecurityAlerts() int {

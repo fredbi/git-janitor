@@ -5,6 +5,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -182,6 +183,13 @@ func (c *Client) Fetch(ctx context.Context, owner, repo string, opts FetchOption
 	}
 
 	data := collectRepoInfo(ctx, c, owner, repo, opts.FetchSecurity)
+
+	// On authentication failure, mark the client as unavailable
+	// so we stop retrying with a bad token on every refresh cycle.
+	if data.Err != nil && isAuthError(data.Err) {
+		c.available = false
+	}
+
 	c.cache.Set(key, data)
 
 	return data
@@ -224,4 +232,21 @@ func (c *Client) rateLimited() bool {
 
 	return c.rate.Remaining > 0 && c.rate.Remaining < rateLimitHardStop &&
 		time.Now().Before(c.rate.ResetAt)
+}
+
+// isAuthError checks if an error indicates an authentication/authorization failure
+// (401 Unauthorized or 403 Forbidden). The go-github SDK wraps these as *github.ErrorResponse.
+func isAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var errResp *gogithub.ErrorResponse
+	if errors.As(err, &errResp) {
+		return errResp.Response != nil &&
+			(errResp.Response.StatusCode == http.StatusUnauthorized ||
+				errResp.Response.StatusCode == http.StatusForbidden)
+	}
+
+	return false
 }

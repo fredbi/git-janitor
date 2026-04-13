@@ -170,6 +170,13 @@ func (c *Client) Fetch(ctx context.Context, projectPath string, opts FetchOption
 	}
 
 	data := collectRepoInfo(ctx, c, projectPath, opts.FetchSecurity)
+
+	// On authentication failure, mark the client as unavailable
+	// so we stop retrying with a bad token on every refresh cycle.
+	if data.Err != nil && isAuthError(data.Err) {
+		c.available = false
+	}
+
 	c.cache.Set(projectPath, data)
 
 	return data
@@ -228,4 +235,21 @@ func (c *Client) rateLimited() bool {
 // isNotFound checks if a GitLab API error is a 404.
 func isNotFound(resp *gitlab.Response) bool {
 	return resp != nil && resp.StatusCode == http.StatusNotFound
+}
+
+// isAuthError checks if an error indicates an authentication/authorization failure
+// (401 Unauthorized or 403 Forbidden). The GitLab SDK wraps these as *gitlab.ErrorResponse.
+func isAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var errResp *gitlab.ErrorResponse
+	if errors.As(err, &errResp) {
+		return errResp.Response != nil &&
+			(errResp.Response.StatusCode == http.StatusUnauthorized ||
+				errResp.Response.StatusCode == http.StatusForbidden)
+	}
+
+	return false
 }

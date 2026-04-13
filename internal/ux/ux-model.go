@@ -826,7 +826,15 @@ func (m *Model) handleGitHubInfo(msg uxtypes.GitHubInfoMsg) (tea.Model, tea.Cmd)
 	}
 
 	if msg.Data.Platform != nil && msg.Data.Platform.Err != nil {
-		m.Status.SetMessage("GitHub: " + msg.Data.Platform.Err.Error())
+		scmLabel := "platform"
+		switch msg.Data.SCM {
+		case models.SCMGitHub:
+			scmLabel = "GitHub"
+		case models.SCMGitLab:
+			scmLabel = "GitLab"
+		}
+
+		m.Status.SetMessage(scmLabel + ": " + msg.Data.Platform.Err.Error())
 	}
 
 	// The engine already injected LocalDefaultBranch during Collect.
