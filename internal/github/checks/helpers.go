@@ -32,16 +32,27 @@ func simpleSubject(names ...string) []models.ActionSubject {
 	return subjects
 }
 
-// forkPlatform returns the PlatformInfo for the fork side of the relationship.
-// Checks Platform first (origin is the fork), then UpstreamPlatform (upstream is the fork).
-// Returns nil if no fork exists.
+// forkPlatform returns the PlatformInfo for the user's own fork.
+//
+// Remote convention in this project: origin points at the source/canonical
+// repo (never a target for admin-level fixes), and upstream points at the
+// user's personal fork. Actionable checks must therefore prefer
+// UpstreamPlatform when present.
+//
+// Platform (origin) is only used as a fallback for clones that have no
+// upstream remote (the user cloned their own fork directly as origin).
+//
+// In a fork-of-a-fork setup — e.g. stretchr/testify ← go-openapi/testify ←
+// fredbi/testify, cloned with origin=go-openapi/testify and
+// upstream=fredbi/testify — origin is itself a fork but still must not be
+// acted on; only the upstream (fredbi/testify) is the user's fork.
 func forkPlatform(info *models.RepoInfo) *models.PlatformInfo {
-	if info.Platform != nil && info.Platform.IsFork {
-		return info.Platform
-	}
-
 	if info.UpstreamPlatform != nil && info.UpstreamPlatform.IsFork {
 		return info.UpstreamPlatform
+	}
+
+	if info.UpstreamPlatform == nil && info.Platform != nil && info.Platform.IsFork {
+		return info.Platform
 	}
 
 	return nil
