@@ -61,8 +61,13 @@ func collectRepoInfo(ctx context.Context, c *Client, owner, repo string, fetchSe
 // collectBranchProtection checks whether the default branch has protection rules.
 // Sets DefaultBranchProtected to 1 (protected) or 0 (not protected).
 // A 404 response means no protection rules exist.
+//
+// The underlying endpoint requires admin permissions — GitHub returns 404 for
+// non-admin callers regardless of actual protection state, so we can't tell
+// "unprotected" from "hidden" without admin access. When we lack admin, leave
+// the field at -1 (unknown) to keep the check silent.
 func collectBranchProtection(ctx context.Context, c *Client, data *models.PlatformInfo) {
-	if data.DefaultBranch == "" {
+	if data.DefaultBranch == "" || !data.HasAdminAccess {
 		return
 	}
 
