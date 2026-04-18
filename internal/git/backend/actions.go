@@ -232,6 +232,30 @@ func (r *Runner) PushBranch(ctx context.Context, remote, name string) models.Act
 	return models.ActionResult{OK: true, Message: fmt.Sprintf("pushed %s to %s with upstream tracking", name, remote)}
 }
 
+// PushBranchPlain pushes a local branch to the given remote without setting
+// upstream tracking and without --force. A non-fast-forward push is refused
+// by git.
+func (r *Runner) PushBranchPlain(ctx context.Context, remote, name string) models.ActionResult {
+	_, err := r.run(ctx, cmdPushBranchPlain(remote, name)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("push branch %s to %s failed: %v", name, remote, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: fmt.Sprintf("pushed %s to %s", name, remote)}
+}
+
+// PushRefspec pushes the ref at src to the remote under dst, without --force
+// and without setting upstream tracking. A non-fast-forward push is refused
+// by git.
+func (r *Runner) PushRefspec(ctx context.Context, remote, src, dst string) models.ActionResult {
+	_, err := r.run(ctx, cmdPushRefspec(remote, src, dst)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("push %s:%s to %s failed: %v", src, dst, remote, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: fmt.Sprintf("pushed %s to %s/%s", src, remote, dst)}
+}
+
 // PushTag pushes a single tag to the origin remote.
 func (r *Runner) PushTag(ctx context.Context, name string) models.ActionResult {
 	_, err := r.run(ctx, cmdPushTag("origin", name)...)

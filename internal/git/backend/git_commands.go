@@ -187,6 +187,14 @@ func cmdPushBranchUpstream(remote, branch string) []string {
 	return []string{"push", "-u", remote, branch}
 }
 
+func cmdPushBranchPlain(remote, branch string) []string {
+	return []string{"push", remote, branch}
+}
+
+func cmdPushRefspec(remote, src, dst string) []string {
+	return []string{"push", remote, src + ":" + dst}
+}
+
 func cmdPushTag(remote, tag string) []string {
 	return []string{"push", remote, tag}
 }

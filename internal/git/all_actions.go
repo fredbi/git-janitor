@@ -30,5 +30,7 @@ func AllActions() iter.Seq[ifaces.Action] {
 		actions.NewDropStash(),
 		actions.NewStripRemoteCredentials(),
 		actions.NewRebaseRemoteBranch(),
+		actions.NewPushLocalToUpstream(),
+		actions.NewPushOriginToUpstream(),
 	})
 }

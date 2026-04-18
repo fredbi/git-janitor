@@ -149,12 +149,16 @@ func (c MyCheck) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error)
 - `noAlert(name)` — return SeverityNone (check passed)
 - `singleAlert(alert)` — return one alert as `iter.Seq`
 - `subjectsDetail(subjects)` — comma-joined subject names
-- `forkPlatform(info)` — get the PlatformInfo for the fork side (GitHub checks)
+- `forkPlatform(info)` — get the PlatformInfo for the user's own fork (GitHub checks)
 
 **For GitHub checks that need fork data:**
 ```go
 func (c MyCheck) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
-    fork := forkPlatform(info) // checks both Platform and UpstreamPlatform
+    // Convention: origin = source/canonical repo, upstream = user's fork.
+    // forkPlatform prefers UpstreamPlatform and only falls back to Platform
+    // when there is no upstream remote. This keeps admin-level fixes targeted
+    // at the user's own fork in fork-of-a-fork setups.
+    fork := forkPlatform(info)
     if fork == nil {
         return noAlert(c.Name())
     }
@@ -227,7 +231,7 @@ Action reads:  params[0] = "feature" (old), params[1] = "main" (new)
 
 ### Fork-aware checks
 
-Use `forkPlatform(info)` to find the fork regardless of which remote (origin or upstream) it's on. Check `HasAdminAccess` before suggesting admin-level actions.
+Use `forkPlatform(info)` to resolve the user's fork. Under this project's remote convention (origin = source, upstream = user's fork), it returns `UpstreamPlatform` when available and only falls back to `Platform` for clones without an upstream. Check `HasAdminAccess` before suggesting admin-level actions.
 
 ### Remote branch checks
 

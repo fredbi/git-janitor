@@ -424,6 +424,56 @@ func (r *Runner) MarkRemoteAheadOnly(ctx context.Context, branches []models.Bran
 	}
 }
 
+// IsUpstreamDefaultBehindLocal reports whether the upstream remote's default
+// branch is strictly behind the local default branch — their tips differ and
+// upstream/<default> is an ancestor of <default>. Returns false when either
+// ref is missing or the local is not strictly ahead (diverged, identical, or
+// behind).
+func (r *Runner) IsUpstreamDefaultBehindLocal(ctx context.Context, branches []models.Branch, defaultBranch, upstreamPrefix string) bool {
+	if defaultBranch == "" {
+		return false
+	}
+
+	return r.isStrictlyBehind(ctx, branches, defaultBranch, false, upstreamPrefix+defaultBranch, true)
+}
+
+// IsUpstreamDefaultBehindOrigin reports whether the upstream remote's default
+// branch is strictly behind the origin remote's default branch — their tips
+// differ and upstream/<default> is an ancestor of origin/<default>.
+func (r *Runner) IsUpstreamDefaultBehindOrigin(ctx context.Context, branches []models.Branch, defaultBranch, originPrefix, upstreamPrefix string) bool {
+	if defaultBranch == "" {
+		return false
+	}
+
+	return r.isStrictlyBehind(ctx, branches, originPrefix+defaultBranch, true, upstreamPrefix+defaultBranch, true)
+}
+
+// isStrictlyBehind reports whether behindRef is strictly behind aheadRef —
+// hashes differ and behindRef is an ancestor of aheadRef. The *Remote flags
+// disambiguate local vs remote-tracking refs when scanning branches.
+func (r *Runner) isStrictlyBehind(ctx context.Context, branches []models.Branch, aheadRef string, aheadRemote bool, behindRef string, behindRemote bool) bool {
+	aheadHash := findBranchHash(branches, aheadRef, aheadRemote)
+	behindHash := findBranchHash(branches, behindRef, behindRemote)
+
+	if aheadHash == "" || behindHash == "" || aheadHash == behindHash {
+		return false
+	}
+
+	_, err := r.run(ctx, cmdIsAncestor(behindRef, aheadRef)...)
+
+	return err == nil
+}
+
+func findBranchHash(branches []models.Branch, name string, remote bool) string {
+	for _, b := range branches {
+		if b.IsRemote == remote && b.Name == name {
+			return b.Hash
+		}
+	}
+
+	return ""
+}
+
 // LocalBranches returns only local branches.
 func (r *Runner) LocalBranches(ctx context.Context) ([]models.Branch, error) {
 	all, err := r.Branches(ctx)

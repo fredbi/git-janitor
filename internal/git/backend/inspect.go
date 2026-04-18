@@ -162,10 +162,13 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 
 		// For fork repos: also check upstream remote branches.
 		upstreamPrefix := models.RemoteUpstream + "/"
+		originPrefix := models.RemoteOrigin + "/"
 		if models.FindRemote(info.Remotes, models.RemoteUpstream) != nil {
 			r.MarkRemoteAheadOnly(ctx, info.Branches, info.DefaultBranch, upstreamPrefix)
 			r.CheckRemoteMergeable(ctx, info.Branches, info.DefaultBranch, upstreamPrefix)
 			r.CheckRemoteRebaseable(ctx, info.Branches, info.DefaultBranch, upstreamPrefix)
+			info.UpstreamDefaultBehindLocal = r.IsUpstreamDefaultBehindLocal(ctx, info.Branches, info.DefaultBranch, upstreamPrefix)
+			info.UpstreamDefaultBehindOrigin = r.IsUpstreamDefaultBehindOrigin(ctx, info.Branches, info.DefaultBranch, originPrefix, upstreamPrefix)
 		}
 	}
 

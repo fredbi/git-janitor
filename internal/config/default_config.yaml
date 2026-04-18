@@ -40,6 +40,8 @@ defaults:
       - name: remote-branch-merged-not-deleted
       - name: remote-credentials-in-url
       - name: remote-branch-diverged
+      - name: fork-upstream-default-behind-local
+      - name: fork-upstream-default-behind-origin
       # Traits
       - name: traits-shallow
       - name: traits-submodules
@@ -66,6 +68,10 @@ defaults:
       - name: rebase-branch
         auto: false
       - name: push-branch
+        auto: false
+      - name: push-local-to-upstream
+        auto: false
+      - name: push-origin-to-upstream
         auto: false
       # Maintenance
       - name: run-gc

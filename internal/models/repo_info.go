@@ -53,6 +53,16 @@ type RepoInfo struct {
 	// Used by fork-aware checks that need data about the user's fork.
 	UpstreamPlatform *PlatformInfo
 
+	// UpstreamDefaultBehindLocal is true when the upstream remote's default
+	// branch is strictly behind the local default branch.
+	// Only populated for fork-kind repos that have an upstream remote.
+	UpstreamDefaultBehindLocal bool
+
+	// UpstreamDefaultBehindOrigin is true when the upstream remote's default
+	// branch is strictly behind the origin remote's default branch.
+	// Only populated for fork-kind repos that have both remotes.
+	UpstreamDefaultBehindOrigin bool
+
 	// Errors.
 	Err      error // fatal collection error
 	FetchErr error // non-fatal fetch failure (local data still valid)

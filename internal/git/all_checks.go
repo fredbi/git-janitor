@@ -43,5 +43,7 @@ func AllChecks() iter.Seq[ifaces.Check] {
 		checks.NewRemoteBranchMergedNotDeleted(),
 		checks.NewRemoteCredentials(),
 		checks.NewRemoteBranchDiverged(),
+		checks.NewForkUpstreamDefaultBehindLocal(),
+		checks.NewForkUpstreamDefaultBehindOrigin(),
 	})
 }
