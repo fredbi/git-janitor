@@ -20,5 +20,7 @@ func AllActions() iter.Seq[ifaces.Action] {
 		actions.NewEnableBranchProtection(),
 		actions.NewEnableDeleteBranchOnMerge(),
 		actions.NewDisableForkActions(),
+		actions.NewSelfAssignIssue(),
+		actions.NewCloseIssue(),
 	})
 }

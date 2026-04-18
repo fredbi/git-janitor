@@ -2,10 +2,13 @@ package ux
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fredbi/git-janitor/internal/models"
+	"github.com/fredbi/git-janitor/internal/ux/gadgets"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -103,12 +106,14 @@ func (m *Model) fetchDetail(scope models.ActionSuggestion) tea.Cmd {
 	return func() tea.Msg {
 		enriched := m.Engine.CollectDetails(context.Background(), info, scope)
 
-		title, content := buildDetailContent(enriched, scope)
+		title, content, url, footer := buildDetailContent(enriched, scope)
 
 		return uxtypes.ShowDetailMsg{
 			Title:   title,
 			Content: content,
 			Scope:   scope,
+			OpenURL: url,
+			Footer:  footer,
 		}
 	}
 }
@@ -123,21 +128,81 @@ func isActivityListSubject(kind models.SubjectKind) bool {
 }
 
 // buildDetailContent extracts the detail text from the enriched RepoInfo.
-func buildDetailContent(info *models.RepoInfo, scope models.ActionSuggestion) (string, string) {
+// Returns (title, content, openURL, footer). openURL is non-empty only when
+// the subject has a canonical web URL (e.g. a GitHub issue); footer is a
+// short status line rendered below the scrollable body.
+func buildDetailContent(info *models.RepoInfo, scope models.ActionSuggestion) (string, string, string, string) {
 	if len(scope.Subjects) == 0 {
-		return "Details", "(no subject)"
+		return "Details", "(no subject)", "", ""
 	}
 
 	name := scope.Subjects[0].Subject
 
 	switch scope.SubjectKind {
 	case models.SubjectBranch:
-		return buildBranchDetail(info, name)
+		title, content := buildBranchDetail(info, name)
+
+		return title, content, "", ""
 	case models.SubjectStash:
-		return buildStashDetail(info, name)
+		title, content := buildStashDetail(info, name)
+
+		return title, content, "", ""
+	case models.SubjectIssueDetail:
+		return buildIssueDetail(info, name)
 	default:
-		return "Details: " + name, "(no details available)"
+		return "Details: " + name, "(no details available)", "", ""
 	}
+}
+
+// buildIssueDetail formats an issue's detail popup content.
+// Header: "<author> updated <age>".
+// Blank line.
+// Body: the issue body (may be empty).
+// Footer: comment count.
+func buildIssueDetail(info *models.RepoInfo, numberStr string) (string, string, string, string) {
+	if info == nil || info.Platform == nil {
+		return "Issue #" + numberStr, "(no platform data)", "", ""
+	}
+
+	number, err := strconv.Atoi(numberStr)
+	if err != nil {
+		return "Issue #" + numberStr, "(invalid issue number)", "", ""
+	}
+
+	for _, issue := range info.Platform.Issues {
+		if issue.Number != number {
+			continue
+		}
+
+		title := fmt.Sprintf("Issue #%d: %s", issue.Number, issue.Title)
+
+		header := fmt.Sprintf("%s updated %s",
+			issue.Author,
+			gadgets.TimeAgo(issue.UpdatedAt),
+		)
+
+		body := "(no body)"
+
+		comments := 0
+		if issue.Detail != nil {
+			if strings.TrimSpace(issue.Detail.Body) != "" {
+				body = issue.Detail.Body
+			}
+
+			comments = issue.Detail.CommentCount
+		}
+
+		content := header + "\n\n" + body
+		footer := fmt.Sprintf("%d comment", comments)
+
+		if comments != 1 {
+			footer += "s"
+		}
+
+		return title, content, issue.HTMLURL, footer
+	}
+
+	return "Issue #" + numberStr, "(issue not found in current page)", "", ""
 }
 
 func buildBranchDetail(info *models.RepoInfo, name string) (string, string) {

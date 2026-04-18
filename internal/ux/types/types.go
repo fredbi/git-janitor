@@ -119,6 +119,12 @@ type ShowDetailMsg struct {
 	Title   string
 	Content string
 	Scope   models.ActionSuggestion // subject scope for actions (delete, etc.)
+	// OpenURL, when set, enables the popup's "open in browser" action and
+	// points to the URL that action should launch.
+	OpenURL string
+	// Footer, when non-empty, is rendered on a reserved line below the
+	// scrollable body (e.g. "N comments" for an issue).
+	Footer string
 }
 
 // FetchDetailMsg is sent when the user requests details for a branch or stash.

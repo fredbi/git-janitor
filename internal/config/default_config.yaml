@@ -117,6 +117,10 @@ defaults:
         auto: false
       - name: disable-fork-actions
         auto: false
+      - name: self-assign-issue
+        auto: false
+      - name: close-issue
+        auto: false
       # Browser
       - name: open-in-browser
         auto: true

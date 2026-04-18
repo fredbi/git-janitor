@@ -51,6 +51,7 @@ const (
 	SubjectIssues                    // GitHub issues (paginated list)
 	SubjectPullRequests              // GitHub pull requests (paginated list)
 	SubjectWorkflowRuns              // GitHub workflow runs (paginated list)
+	SubjectIssueDetail               // a single GitHub issue, identified by number
 )
 
 // String returns the human-readable name of a SubjectKind.
@@ -74,6 +75,8 @@ func (s SubjectKind) String() string {
 		return "pull_requests"
 	case SubjectWorkflowRuns:
 		return "workflow_runs"
+	case SubjectIssueDetail:
+		return "issue_detail"
 	default:
 		return "unknown"
 	}
@@ -103,6 +106,8 @@ func ParseSubjectKind(s string) (SubjectKind, bool) {
 		return SubjectPullRequests, true
 	case "workflow_runs", "workflow-runs", "workflowruns":
 		return SubjectWorkflowRuns, true
+	case "issue_detail", "issue-detail", "issuedetail":
+		return SubjectIssueDetail, true
 	default:
 		return 0, false
 	}

@@ -61,6 +61,49 @@ func (e *Interactive) collectPullRequestList(ctx context.Context, info *models.R
 	}
 }
 
+// collectIssueDetail fetches full detail for a single issue identified by
+// its number (first subject in the scope) and attaches it to the matching
+// entry in PlatformInfo.Issues. The list is assumed to already be
+// populated — the detail lookup piggybacks on the cached summary so the
+// UI can show both metadata (author, dates) and body in one popup.
+func (e *Interactive) collectIssueDetail(ctx context.Context, info *models.RepoInfo, scope models.ActionSuggestion) {
+	client, platform := e.githubClientForPlatform(info)
+	if client == nil || platform == nil || len(scope.Subjects) == 0 {
+		return
+	}
+
+	number, err := strconv.Atoi(scope.Subjects[0].Subject)
+	if err != nil || number <= 0 {
+		return
+	}
+
+	// Find the summary entry so we can attach the Detail in place.
+	var target *models.Issue
+
+	for i := range platform.Issues {
+		if platform.Issues[i].Number == number {
+			target = &platform.Issues[i]
+
+			break
+		}
+	}
+
+	if target == nil {
+		return
+	}
+
+	if target.Detail != nil {
+		return // already fetched
+	}
+
+	detail := client.GetIssueDetail(ctx, platform.Owner, platform.Repo, number)
+	if detail == nil {
+		return
+	}
+
+	target.Detail = detail
+}
+
 // collectWorkflowRunList fetches a page of workflow runs from the GitHub API.
 func (e *Interactive) collectWorkflowRunList(ctx context.Context, info *models.RepoInfo, scope models.ActionSuggestion) {
 	client, platform := e.githubClientForPlatform(info)

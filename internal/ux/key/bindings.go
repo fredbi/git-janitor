@@ -63,6 +63,9 @@ const (
 	GG    Binding = "G" // shift+g (end)
 	J     Binding = "j"
 	K     Binding = "k"
+	O     Binding = "o"
+	S     Binding = "s"
+	X     Binding = "x"
 )
 
 // Quit reports whether this binding is a quit action.

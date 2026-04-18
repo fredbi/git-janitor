@@ -47,6 +47,7 @@ type Client struct {
 	mu     sync.Mutex
 	rate   RateInfo
 	scopes string // token scopes from X-OAuth-Scopes header
+	login  string // authenticated user login, lazily fetched
 }
 
 // NewClient creates a Client from environment variables.
@@ -93,6 +94,69 @@ func (c *Client) Scopes() string {
 	defer c.mu.Unlock()
 
 	return c.scopes
+}
+
+// AuthenticatedLogin returns the GitHub login of the token holder, fetching
+// it on first use and caching the result. Returns "" when the token is not
+// available or the lookup fails.
+func (c *Client) AuthenticatedLogin(ctx context.Context) (string, error) {
+	if !c.available {
+		return "", errors.New("github: no token available")
+	}
+
+	c.mu.Lock()
+	cached := c.login
+	c.mu.Unlock()
+
+	if cached != "" {
+		return cached, nil
+	}
+
+	user, resp, err := c.gh.Users.Get(ctx, "")
+	c.updateRate(resp)
+
+	if err != nil {
+		return "", err
+	}
+
+	login := user.GetLogin()
+
+	c.mu.Lock()
+	c.login = login
+	c.mu.Unlock()
+
+	return login, nil
+}
+
+// CloseIssue transitions the given issue to the "closed" state.
+// Requires the token holder to have write access to the repository.
+func (c *Client) CloseIssue(ctx context.Context, owner, repo string, number int) error {
+	if !c.available {
+		return errors.New("github: no token available")
+	}
+
+	closed := "closed"
+	_, resp, err := c.gh.Issues.Edit(ctx, owner, repo, number, &gogithub.IssueRequest{
+		State: &closed,
+	})
+	c.updateRate(resp)
+
+	return err
+}
+
+// AddIssueAssignees assigns the given logins to the specified issue.
+// The call requires at least triage permission on the repository; GitHub
+// silently drops logins that are not allowed to be assigned, so callers
+// should verify the effect via a follow-up fetch if certainty is needed.
+func (c *Client) AddIssueAssignees(ctx context.Context, owner, repo string, number int, logins []string) error {
+	if !c.available {
+		return errors.New("github: no token available")
+	}
+
+	_, resp, err := c.gh.Issues.AddAssignees(ctx, owner, repo, number, logins)
+	c.updateRate(resp)
+
+	return err
 }
 
 // SetDescription updates the repository description on GitHub.

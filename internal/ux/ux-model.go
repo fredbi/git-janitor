@@ -166,6 +166,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Detail.IsRemote = m.isRemoteBranch(msg.Scope.Subjects[0].Subject)
 		}
 
+		if msg.OpenURL != "" {
+			m.Detail.SetURL(msg.OpenURL)
+		}
+
+		if msg.Footer != "" {
+			m.Detail.SetFooter(msg.Footer)
+		}
+
 		return m, nil
 
 	case uxtypes.FetchDetailMsg:
@@ -271,21 +279,6 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleQuickActionsKey(msg)
 	}
 
-	// When the right panel has an active text input (e.g. param prompt),
-	// forward all keys directly except quit — the input needs to capture
-	// letters, arrows, etc. that would otherwise trigger panel navigation.
-	if m.Focused == paneRight && m.Right.IsCapturingInput() {
-		if kb == key.CtrlC || kb == key.CtrlQ {
-			m.Quitting = true
-
-			return m, tea.Quit
-		}
-
-		cmd := m.Right.Update(msg)
-
-		return m, cmd
-	}
-
 	// Global keys that work regardless of focus.
 	switch kb {
 	case key.CtrlC, key.CtrlQ:
@@ -351,9 +344,27 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleHelpKey(msg)
 	}
 
-	// When the detail popup is visible, it captures all keys.
+	// When the detail popup is visible, it captures all keys — including
+	// keys that a focused panel would otherwise consume (e.g. the Activity
+	// list in FocusList mode).
 	if m.Detail.Visible {
 		return m.handleDetailKey(msg)
+	}
+
+	// When the right panel has an active text input (e.g. param prompt),
+	// forward all keys directly except quit — the input needs to capture
+	// letters, arrows, etc. that would otherwise trigger panel navigation.
+	// Placed after popup handlers so popups keep their key bindings.
+	if m.Focused == paneRight && m.Right.IsCapturingInput() {
+		if kb == key.CtrlC || kb == key.CtrlQ {
+			m.Quitting = true
+
+			return m, tea.Quit
+		}
+
+		cmd := m.Right.Update(msg)
+
+		return m, cmd
 	}
 
 	switch kb {
@@ -469,7 +480,9 @@ func (m *Model) handleHelpKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if key.MsgBinding(msg).ClosePopup() {
+	// Only Esc dismisses — pressing letter keys (e.g. q) should scroll or
+	// no-op rather than accidentally closing the popup.
+	if key.MsgBinding(msg) == key.Esc {
 		m.Detail.Hide()
 
 		return m, nil
@@ -496,6 +509,18 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if key.MsgBinding(msg) == key.R && m.Detail.CanRebase() {
 		return m.handleDetailAction("rebase-branch")
+	}
+
+	if key.MsgBinding(msg) == key.O && m.Detail.CanOpenInBrowser() {
+		return m.handleDetailOpenInBrowser()
+	}
+
+	if key.MsgBinding(msg) == key.S && m.Detail.CanSelfAssign() {
+		return m.handleDetailAction("self-assign-issue")
+	}
+
+	if key.MsgBinding(msg) == key.X && m.Detail.CanCloseIssue() {
+		return m.handleDetailAction("close-issue")
 	}
 
 	// Forward scroll keys to the viewport.
@@ -1421,6 +1446,25 @@ func (m *Model) buildActionList() string {
 	b.WriteString("\n  " + warn.Render("!") + " = destructive (requires confirmation)\n")
 
 	return b.String()
+}
+
+// handleDetailOpenInBrowser closes the popup and dispatches the
+// open-in-browser action on the popup's URL.
+//
+//nolint:ireturn // matches the bubbletea tea.Model update contract, same as sibling handlers.
+func (m *Model) handleDetailOpenInBrowser() (tea.Model, tea.Cmd) {
+	url := m.Detail.URL
+	m.Detail.Hide()
+
+	if url == "" {
+		return m, nil
+	}
+
+	return m.handleExecuteAction(uxtypes.ExecuteActionMsg{
+		RepoPath:   m.SelectedRepo,
+		ActionName: "open-in-browser",
+		Subjects:   []models.ActionSubject{{Subject: url}},
+	})
 }
 
 // handleClearCache flushes the persistent RepoInfo cache via the engine

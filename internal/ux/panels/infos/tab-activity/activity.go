@@ -573,13 +573,6 @@ func (p *Panel) fetchCmd() tea.Cmd {
 }
 
 func (p *Panel) detailCmd() tea.Cmd {
-	var (
-		subjectKind models.SubjectKind
-		subjectID   string
-		title       string
-		content     string
-	)
-
 	switch p.ActiveSub {
 	case SubTabIssues:
 		if p.Cursor >= len(p.issues) {
@@ -587,10 +580,20 @@ func (p *Panel) detailCmd() tea.Cmd {
 		}
 
 		issue := p.issues[p.Cursor]
-		subjectKind = models.SubjectIssues
-		subjectID = strconv.Itoa(issue.Number)
-		title = fmt.Sprintf("Issue #%d: %s", issue.Number, issue.Title)
-		content = issue.Title
+
+		// Route through the engine so we pick up the issue body via the
+		// dedicated GitHub API call. The popup content is built once the
+		// detail arrives.
+		return func() tea.Msg {
+			return uxtypes.FetchDetailMsg{
+				Scope: models.ActionSuggestion{
+					SubjectKind: models.SubjectIssueDetail,
+					Subjects: []models.ActionSubject{{
+						Subject: strconv.Itoa(issue.Number),
+					}},
+				},
+			}
+		}
 
 	case SubTabPRs:
 		if p.Cursor >= len(p.prs) {
@@ -598,10 +601,15 @@ func (p *Panel) detailCmd() tea.Cmd {
 		}
 
 		pr := p.prs[p.Cursor]
-		subjectKind = models.SubjectPullRequests
-		subjectID = strconv.Itoa(pr.Number)
-		title = fmt.Sprintf("PR #%d: %s", pr.Number, pr.Title)
-		content = pr.Title
+		title := fmt.Sprintf("PR #%d: %s", pr.Number, pr.Title)
+
+		return func() tea.Msg {
+			return uxtypes.ShowDetailMsg{
+				Title:   title,
+				Content: pr.Title,
+				OpenURL: pr.HTMLURL,
+			}
+		}
 
 	case SubTabWorkflows:
 		if p.Cursor >= len(p.runs) {
@@ -609,25 +617,18 @@ func (p *Panel) detailCmd() tea.Cmd {
 		}
 
 		run := p.runs[p.Cursor]
-		subjectKind = models.SubjectWorkflowRuns
-		subjectID = strconv.FormatInt(run.ID, 10)
-		title = fmt.Sprintf("Run %d: %s", run.ID, run.Name)
-		content = run.Name
+		title := fmt.Sprintf("Run %d: %s", run.ID, run.Name)
+
+		return func() tea.Msg {
+			return uxtypes.ShowDetailMsg{
+				Title:   title,
+				Content: run.Name,
+				OpenURL: run.HTMLURL,
+			}
+		}
 
 	default:
 		return nil
-	}
-
-	// For now, show a simple popup with the title.
-	// Later, this will trigger a FetchDetailMsg to get full detail.
-	_ = subjectKind
-	_ = subjectID
-
-	return func() tea.Msg {
-		return uxtypes.ShowDetailMsg{
-			Title:   title,
-			Content: content,
-		}
 	}
 }
 

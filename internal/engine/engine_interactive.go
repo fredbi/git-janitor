@@ -237,6 +237,8 @@ func (e *Interactive) CollectDetails(ctx context.Context, info *models.RepoInfo,
 		e.collectPullRequestList(ctx, info, scope)
 	case models.SubjectWorkflowRuns:
 		e.collectWorkflowRunList(ctx, info, scope)
+	case models.SubjectIssueDetail:
+		e.collectIssueDetail(ctx, info, scope)
 	}
 
 	// Update cache with enriched data.

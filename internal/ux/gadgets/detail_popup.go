@@ -20,8 +20,14 @@ type DetailPopup struct {
 	Content  string                  // raw content for clipboard copy
 	Scope    models.ActionSuggestion // subject scope for actions (delete, etc.)
 	IsRemote bool                    // true when showing a remote branch
-	Width    int
-	Height   int
+	// URL, when non-empty, enables the "open in browser" action. The model
+	// wires the O key to dispatch open-in-browser with this URL.
+	URL string
+	// Footer, when non-empty, is displayed on a reserved line between the
+	// scrollable body and the key-hint line (e.g. "N comments" for issues).
+	Footer string
+	Width  int
+	Height int
 }
 
 // NewDetailPopup creates a new DetailPopup.
@@ -32,15 +38,50 @@ func NewDetailPopup(theme *uxtypes.Theme) DetailPopup {
 	}
 }
 
-// Show makes the popup visible with the given title and content.
-// scope identifies the subject being viewed (for actions like delete).
+// Show makes the popup visible with the given title and content. The URL
+// and Footer are reset — callers that want the "open in browser" shortcut
+// or a footer line must call [DetailPopup.SetURL] / [DetailPopup.SetFooter]
+// after Show. scope identifies the subject being viewed.
 func (d *DetailPopup) Show(title, content string, scope models.ActionSuggestion) {
 	d.Title = title
 	d.Content = content
 	d.Scope = scope
-	d.Viewport.SetContent(content)
+	d.URL = ""
+	d.Footer = ""
+	d.applyContent()
 	d.Visible = true
 	d.Viewport.GotoTop()
+}
+
+// SetURL attaches a URL to the currently displayed popup. When set, the
+// popup offers an "open in browser" shortcut (O key).
+func (d *DetailPopup) SetURL(url string) {
+	d.URL = url
+}
+
+// SetFooter attaches a single-line footer displayed between the body and
+// the key-hint line. Pass "" to clear it. Footer height is reclaimed from
+// the scrollable viewport.
+func (d *DetailPopup) SetFooter(footer string) {
+	d.Footer = footer
+	d.applyContent()
+}
+
+// CanOpenInBrowser reports whether the popup has a URL to launch.
+func (d *DetailPopup) CanOpenInBrowser() bool {
+	return d.URL != ""
+}
+
+// CanSelfAssign reports whether the current scope supports the
+// self-assign-issue action (i.e. it is a single GitHub issue).
+func (d *DetailPopup) CanSelfAssign() bool {
+	return d.Scope.SubjectKind == models.SubjectIssueDetail && len(d.Scope.Subjects) > 0
+}
+
+// CanCloseIssue reports whether the current scope supports the close-issue
+// action (i.e. it is a single GitHub issue).
+func (d *DetailPopup) CanCloseIssue() bool {
+	return d.Scope.SubjectKind == models.SubjectIssueDetail && len(d.Scope.Subjects) > 0
 }
 
 // Hide hides the popup.
@@ -71,9 +112,20 @@ func (d *DetailPopup) SetSize(termWidth, termHeight int) {
 		d.Height = min(10, termHeight) //nolint:mnd // minimum height
 	}
 
-	// Account for border (2) + title (1) + padding (1) + hint (1).
-	d.Viewport.Width = d.Width - 4   //nolint:mnd // border
-	d.Viewport.Height = d.Height - 7 //nolint:mnd // border + title + padding + hint
+	// Account for border (2) + title (1) + padding (1) + hint (1) + optional footer (1).
+	const chromeLines = 7
+
+	d.Viewport.Width = d.Width - 4 //nolint:mnd // border + inner padding
+
+	vpHeight := d.Height - chromeLines
+	if d.Footer != "" {
+		vpHeight--
+	}
+
+	d.Viewport.Height = vpHeight
+
+	// Re-wrap content to the new width.
+	d.applyContent()
 }
 
 // Update handles messages for the popup viewport (scroll keys).
@@ -107,10 +159,26 @@ func (d *DetailPopup) View(termWidth, termHeight int) string {
 	if d.CanDelete() {
 		hint += "  D: delete"
 	}
+	if d.CanOpenInBrowser() {
+		hint += "  O: open in browser"
+	}
+	if d.CanSelfAssign() {
+		hint += "  S: self-assign"
+	}
+	if d.CanCloseIssue() {
+		hint += "  X: close issue"
+	}
 
-	content := titleStyle.Render(d.Title) + "\n" +
-		d.Viewport.View() + "\n" +
-		hintStyle.Render(hint)
+	body := titleStyle.Render(d.Title) + "\n" +
+		d.Viewport.View()
+
+	if d.Footer != "" {
+		footerStyle := lipgloss.NewStyle().Foreground(t.Dim)
+		body += "\n" + footerStyle.Render(d.Footer)
+	}
+
+	body += "\n" + hintStyle.Render(hint)
+	content := body
 
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -126,4 +194,19 @@ func (d *DetailPopup) View(termWidth, termHeight int) string {
 		lipgloss.Center, lipgloss.Center,
 		popup,
 	)
+}
+
+// applyContent wraps the raw content to the current viewport width and
+// pushes it into the viewport. Long lines (e.g. paragraph text from an
+// issue body) get soft-wrapped so the user can scroll through them.
+func (d *DetailPopup) applyContent() {
+	width := d.Viewport.Width
+	if width <= 0 {
+		d.Viewport.SetContent(d.Content)
+
+		return
+	}
+
+	wrapped := lipgloss.NewStyle().Width(width).Render(d.Content)
+	d.Viewport.SetContent(wrapped)
 }
