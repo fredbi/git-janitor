@@ -103,12 +103,9 @@ func walkRepos(root, current string, depth, maxDepth int, emitNonGitTop bool, ou
 
 		name := d.Name()
 
-		// Skip hidden directories and common noise.
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-
-		if ShouldSkipDir(name) {
+		// The .git metadata directory is never a repo itself. Also skip
+		// common noise directories (vendor, node_modules, build caches).
+		if name == ".git" || ShouldSkipDir(name) {
 			continue
 		}
 
@@ -120,7 +117,17 @@ func walkRepos(root, current string, depth, maxDepth int, emitNonGitTop bool, ou
 			continue
 		}
 
-		if IsGitDir(path) {
+		isGit := IsGitDir(path)
+
+		// Other hidden directories (.vscode, .cache, etc.) are skipped
+		// unless they are themselves a git repo — a legitimately-named
+		// ".github" repo still gets listed, but we do not traverse hidden
+		// directories looking for nested repos.
+		if strings.HasPrefix(name, ".") && !isGit {
+			continue
+		}
+
+		if isGit {
 			// Real git repository: emit and stop descending into it.
 			*out = append(*out, models.RepoItem{
 				Name:      name,

@@ -153,6 +153,26 @@ func TestDiscoverReposDepth_SkipsHiddenAndNoise(t *testing.T) {
 	}
 }
 
+// A dot-prefixed directory that is itself a git repo (e.g. a GitHub
+// org-defaults ".github" repo) must be listed. Nested content under other
+// dot-prefixed directories remains hidden.
+func TestDiscoverReposDepth_DotRepoListedButTraversalStillSkipped(t *testing.T) {
+	root := t.TempDir()
+	mkRepo(t, filepath.Join(root, "good"))
+	mkRepo(t, filepath.Join(root, ".github")) // legitimate dot-named repo
+	mkRepo(t, filepath.Join(root, ".hidden", "evil"))
+
+	repos, err := DiscoverReposDepth(root, 4)
+	if err != nil {
+		t.Fatalf("DiscoverReposDepth: %v", err)
+	}
+
+	want := []string{".github", "good"}
+	if got := gotKey(repos); !equalStrings(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
 func TestDiscoverReposDepth_SkipsLinkedWorktrees(t *testing.T) {
 	root := t.TempDir()
 	mkRepo(t, filepath.Join(root, "main"))
