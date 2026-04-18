@@ -78,3 +78,26 @@ func (e *Interactive) cacheDelete(path string) {
 		log.Printf("cache: delete %q: %v", path, err)
 	}
 }
+
+// ClearCache removes every entry from the persistent RepoInfo cache.
+// Returns the number of entries that were removed.
+func (e *Interactive) ClearCache() (int, error) {
+	if e.store == nil {
+		return 0, nil
+	}
+
+	var count int
+	if err := e.store.Scan(store.BucketCache, "", func(_, _ []byte) bool {
+		count++
+
+		return true
+	}); err != nil {
+		return 0, err
+	}
+
+	if err := e.store.ClearBucket(store.BucketCache); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}

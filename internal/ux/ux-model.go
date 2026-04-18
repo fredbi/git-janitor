@@ -182,6 +182,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, cmd
 
+	case uxtypes.ClearCacheMsg:
+		return m.handleClearCache()
+
+	case uxtypes.PurgeHistoryMsg:
+		return m.handlePurgeHistory(msg.OlderThanDays)
+
 	case statusbar.TickMsg:
 		cmd, consumed := m.Status.Update(msg)
 		if consumed {
@@ -1415,6 +1421,68 @@ func (m *Model) buildActionList() string {
 	b.WriteString("\n  " + warn.Render("!") + " = destructive (requires confirmation)\n")
 
 	return b.String()
+}
+
+// handleClearCache flushes the persistent RepoInfo cache via the engine
+// and surfaces the outcome in the status bar. Does not re-collect the
+// currently displayed repo — the user can Ctrl+R if they want fresh data.
+//
+//nolint:ireturn // matches the bubbletea tea.Model update contract, same as sibling handlers.
+func (m *Model) handleClearCache() (tea.Model, tea.Cmd) {
+	if m.Engine == nil {
+		m.Status.SetMessage("No engine available — cannot clear cache.")
+
+		return m, nil
+	}
+
+	n, err := m.Engine.ClearCache()
+	if err != nil {
+		m.Status.SetMessagef("Clear cache failed: %v", err)
+
+		return m, nil
+	}
+
+	if n == 0 {
+		m.Status.SetMessage("Cache already empty.")
+	} else {
+		m.Status.SetMessagef("Cache cleared (%d entries).", n)
+	}
+
+	return m, nil
+}
+
+// handlePurgeHistory removes action-history entries via the engine and
+// refreshes the Recent tab so the change is immediately visible.
+// olderThanDays <= 0 means all history.
+//
+//nolint:ireturn // matches the bubbletea tea.Model update contract, same as sibling handlers.
+func (m *Model) handlePurgeHistory(olderThanDays int) (tea.Model, tea.Cmd) {
+	if m.Engine == nil {
+		m.Status.SetMessage("No engine available — cannot purge history.")
+
+		return m, nil
+	}
+
+	n, err := m.Engine.PurgeHistory(olderThanDays)
+	if err != nil {
+		m.Status.SetMessagef("Purge history failed: %v", err)
+
+		return m, nil
+	}
+
+	switch {
+	case n == 0:
+		m.Status.SetMessage("No matching history entries to purge.")
+	case olderThanDays <= 0:
+		m.Status.SetMessagef("Purged all history (%d entries).", n)
+	default:
+		m.Status.SetMessagef("Purged %d history entry(ies) older than %d days.", n, olderThanDays)
+	}
+
+	// Refresh Recent so the tab reflects the new state.
+	m.Right.RefreshRecent()
+
+	return m, nil
 }
 
 // focusedCapturesInput reports whether the currently focused pane has an

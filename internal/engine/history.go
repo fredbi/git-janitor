@@ -39,6 +39,63 @@ func (e *Interactive) appendHistory(entry models.HistoryEntry) {
 	}
 }
 
+// PurgeHistory removes persisted action-history entries. When
+// olderThanDays is greater than zero, only entries strictly older than
+// that window are removed; otherwise all history is wiped. Returns the
+// number of entries that were removed.
+func (e *Interactive) PurgeHistory(olderThanDays int) (int, error) {
+	if e.store == nil {
+		return 0, nil
+	}
+
+	if olderThanDays <= 0 {
+		var count int
+		if err := e.store.Scan(store.BucketHistory, "", func(_, _ []byte) bool {
+			count++
+
+			return true
+		}); err != nil {
+			return 0, err
+		}
+
+		if err := e.store.ClearBucket(store.BucketHistory); err != nil {
+			return 0, err
+		}
+
+		return count, nil
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -olderThanDays)
+
+	var victims []string
+
+	if err := e.store.Scan(store.BucketHistory, "", func(key, value []byte) bool {
+		entry, decErr := unmarshalHistoryEntry(value)
+		if decErr != nil {
+			// Treat undecodable entries as old so they get swept up.
+			victims = append(victims, string(key))
+
+			return true
+		}
+
+		if entry.Timestamp.Before(cutoff) {
+			victims = append(victims, string(key))
+		}
+
+		return true
+	}); err != nil {
+		return 0, err
+	}
+
+	for _, k := range victims {
+		if err := e.store.Delete(store.BucketHistory, k); err != nil {
+			return 0, err
+		}
+	}
+
+	return len(victims), nil
+}
+
 // RecentHistory returns history entries for the given repo with timestamps
 // after since, ordered newest first.
 func (e *Interactive) RecentHistory(repoPath string, since time.Time) []models.HistoryEntry {

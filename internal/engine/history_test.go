@@ -160,6 +160,88 @@ func TestHistory_NilStore(t *testing.T) {
 	}
 }
 
+func TestPurgeHistory_All(t *testing.T) {
+	eng := newTestEngineForHistory(t)
+	now := time.Now()
+
+	for _, p := range []string{"/repo/a", "/repo/b"} {
+		eng.appendHistory(models.HistoryEntry{
+			Timestamp:  now,
+			RepoPath:   p,
+			ActionName: "act",
+			Result:     models.Result{OK: true, Message: "ok"},
+		})
+	}
+
+	n, err := eng.PurgeHistory(0)
+	if err != nil {
+		t.Fatalf("PurgeHistory(0): %v", err)
+	}
+
+	if n != 2 {
+		t.Errorf("PurgeHistory(0) = %d, want 2", n)
+	}
+
+	for _, p := range []string{"/repo/a", "/repo/b"} {
+		if entries := eng.RecentHistory(p, now.Add(-time.Hour)); len(entries) != 0 {
+			t.Errorf("RecentHistory(%q) returned %d entries after purge", p, len(entries))
+		}
+	}
+}
+
+func TestPurgeHistory_OlderThanDays(t *testing.T) {
+	eng := newTestEngineForHistory(t)
+	now := time.Now()
+
+	entries := []models.HistoryEntry{
+		{Timestamp: now.AddDate(0, 0, -60), RepoPath: "/repo/a", ActionName: "very-old", Result: models.Result{OK: true, Message: "ok"}},
+		{Timestamp: now.AddDate(0, 0, -45), RepoPath: "/repo/a", ActionName: "old", Result: models.Result{OK: true, Message: "ok"}},
+		{Timestamp: now.AddDate(0, 0, -10), RepoPath: "/repo/a", ActionName: "recent", Result: models.Result{OK: true, Message: "ok"}},
+		{Timestamp: now.AddDate(0, 0, -1), RepoPath: "/repo/a", ActionName: "brand-new", Result: models.Result{OK: true, Message: "ok"}},
+	}
+	for _, e := range entries {
+		eng.appendHistory(e)
+	}
+
+	n, err := eng.PurgeHistory(30)
+	if err != nil {
+		t.Fatalf("PurgeHistory(30): %v", err)
+	}
+
+	if n != 2 {
+		t.Errorf("PurgeHistory(30) = %d, want 2 (two entries older than 30 days)", n)
+	}
+
+	kept := eng.RecentHistory("/repo/a", now.AddDate(-1, 0, 0))
+	if len(kept) != 2 {
+		t.Fatalf("expected 2 surviving entries, got %d", len(kept))
+	}
+
+	surviving := map[string]bool{}
+	for _, e := range kept {
+		surviving[e.ActionName] = true
+	}
+
+	for _, name := range []string{"recent", "brand-new"} {
+		if !surviving[name] {
+			t.Errorf("expected %q to survive, got %v", name, surviving)
+		}
+	}
+}
+
+func TestPurgeHistory_NilStore(t *testing.T) {
+	eng := NewInteractive()
+
+	n, err := eng.PurgeHistory(0)
+	if err != nil {
+		t.Fatalf("PurgeHistory with nil store: %v", err)
+	}
+
+	if n != 0 {
+		t.Errorf("PurgeHistory with nil store returned %d, want 0", n)
+	}
+}
+
 func TestHistory_NewestFirst(t *testing.T) {
 	eng := newTestEngineForHistory(t)
 	now := time.Now()

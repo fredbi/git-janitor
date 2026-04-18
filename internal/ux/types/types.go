@@ -137,3 +137,13 @@ type GitHubInfoMsg struct {
 	RepoPath string
 	Data     *models.RepoInfo
 }
+
+// ClearCacheMsg asks the top-level model to flush the persistent
+// RepoInfo cache via the engine.
+type ClearCacheMsg struct{}
+
+// PurgeHistoryMsg asks the top-level model to drop action-history
+// entries via the engine. OlderThanDays <= 0 means "all history".
+type PurgeHistoryMsg struct {
+	OlderThanDays int
+}

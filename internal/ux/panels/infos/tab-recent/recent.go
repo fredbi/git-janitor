@@ -32,19 +32,42 @@ func (p *Panel) SetHistory(entries []models.HistoryEntry) {
 	p.ResetScroll()
 }
 
+// reservedLines accounts for the header row + the P/M/C actions row.
+const reservedLines = 2
+
 // SetSize updates the panel dimensions.
 func (p *Panel) SetSize(w, h int) {
-	p.Base.SetSize(w, h, 1, 1) // 1 reserved line for header
+	p.Base.SetSize(w, h, reservedLines, 1)
 }
 
-// Update handles key messages for cursor navigation.
+// Update handles key messages: cursor navigation plus the P/M/C shortcuts
+// for cache- and history-maintenance actions.
 func (p *Panel) Update(msg tea.Msg) tea.Cmd {
-	if km, ok := msg.(tea.KeyMsg); ok {
-		p.NavigateKey(km, len(p.entries))
-		p.ClampScroll(p.Height)
+	km, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return nil
 	}
 
+	switch strings.ToLower(km.String()) {
+	case "p":
+		return emitMsg(uxtypes.PurgeHistoryMsg{OlderThanDays: 0})
+	case "m":
+		return emitMsg(uxtypes.PurgeHistoryMsg{OlderThanDays: historyMonthlyWindow})
+	case "c":
+		return emitMsg(uxtypes.ClearCacheMsg{})
+	}
+
+	p.NavigateKey(km, len(p.entries))
+	p.ClampScroll(p.Height)
+
 	return nil
+}
+
+// historyMonthlyWindow is the "older than" threshold used by the M shortcut.
+const historyMonthlyWindow = 30
+
+func emitMsg(msg tea.Msg) tea.Cmd {
+	return func() tea.Msg { return msg }
 }
 
 // View renders the recent history list.
@@ -55,11 +78,12 @@ func (p *Panel) View() string {
 		Foreground(t.HeaderText).
 		Bold(true)
 	header := headerStyle.Render(fmt.Sprintf(" Recent actions (%d)", len(p.entries)))
+	actionsRow := p.renderActionsRow()
 
 	if len(p.entries) == 0 {
 		emptyStyle := lipgloss.NewStyle().Foreground(t.Dim).PaddingLeft(1)
 
-		return header + "\n" + emptyStyle.Render("No recent actions for this repo.")
+		return header + "\n" + actionsRow + "\n" + emptyStyle.Render("No recent actions for this repo.")
 	}
 
 	p.ClampScroll(p.Height)
@@ -73,12 +97,29 @@ func (p *Panel) View() string {
 
 	rows = panels.PadRows(rows, p.Height)
 
-	return header + "\n" + strings.Join(rows, "\n")
+	return header + "\n" + actionsRow + "\n" + strings.Join(rows, "\n")
 }
 
 // SetTheme updates the theme for rendering. This is called from the parent panel.
 func (p *Panel) SetTheme(theme *uxtypes.Theme) {
 	p.Theme = theme
+}
+
+// renderActionsRow formats the P/M/C shortcut hints shown above the list.
+// All three actions affect the persistent store globally, not just the
+// selected repo.
+func (p *Panel) renderActionsRow() string {
+	t := p.Theme
+	keyStyle := lipgloss.NewStyle().Foreground(t.Tertiary).Bold(true)
+	textStyle := lipgloss.NewStyle().Foreground(t.Dim)
+
+	entry := func(k, label string) string {
+		return keyStyle.Render("["+k+"]") + " " + textStyle.Render(label)
+	}
+
+	return " " + entry("P", "Purge all history") +
+		"  " + entry("M", "Purge > 30 days") +
+		"  " + entry("C", "Clear cache")
 }
 
 func (p *Panel) renderEntry(idx int) string {

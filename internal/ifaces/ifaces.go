@@ -71,6 +71,16 @@ type Engineer interface {
 	// The action is spawned detached: this call returns as soon as the
 	// child process has been started.
 	ExecuteQuickAction(ctx context.Context, rootIndex int, name string, params map[string]string) error
+
+	// ClearCache removes every entry from the persistent RepoInfo cache.
+	// Returns the number of entries that were removed.
+	ClearCache() (int, error)
+
+	// PurgeHistory removes persisted action-history entries. When
+	// olderThanDays is greater than zero, only entries strictly older than
+	// that window are removed; when olderThanDays is zero or negative, all
+	// history is wiped. Returns the number of entries that were removed.
+	PurgeHistory(olderThanDays int) (int, error)
 }
 
 // SelfDescribed is common to checks and actions: provides a name and

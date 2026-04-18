@@ -143,6 +143,58 @@ func TestCache_NilStore(t *testing.T) {
 	eng.cacheDelete("/repo/test") // should not panic
 }
 
+func TestClearCache(t *testing.T) {
+	eng := newTestEngine(t, time.Minute)
+
+	// Populate three entries.
+	for _, p := range []string{"/repo/a", "/repo/b", "/repo/c"} {
+		eng.cachePut(&models.RepoInfo{
+			Path:         p,
+			IsGit:        true,
+			CollectedAt:  time.Now(),
+			CollectLevel: models.CollectLevelFull,
+		})
+	}
+
+	n, err := eng.ClearCache()
+	if err != nil {
+		t.Fatalf("ClearCache: %v", err)
+	}
+
+	if n != 3 {
+		t.Errorf("ClearCache returned %d, want 3", n)
+	}
+
+	for _, p := range []string{"/repo/a", "/repo/b", "/repo/c"} {
+		if got := eng.cacheGet(p, false); got != nil {
+			t.Errorf("cacheGet(%q) returned non-nil after ClearCache", p)
+		}
+	}
+
+	// Second call on empty bucket should report zero and not fail.
+	n, err = eng.ClearCache()
+	if err != nil {
+		t.Fatalf("ClearCache (empty): %v", err)
+	}
+
+	if n != 0 {
+		t.Errorf("ClearCache on empty bucket returned %d, want 0", n)
+	}
+}
+
+func TestClearCache_NilStore(t *testing.T) {
+	eng := NewInteractive()
+
+	n, err := eng.ClearCache()
+	if err != nil {
+		t.Fatalf("ClearCache with nil store: %v", err)
+	}
+
+	if n != 0 {
+		t.Errorf("ClearCache with nil store returned %d, want 0", n)
+	}
+}
+
 func TestCache_Delete(t *testing.T) {
 	eng := newTestEngine(t, time.Minute)
 

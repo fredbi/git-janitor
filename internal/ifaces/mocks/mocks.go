@@ -26,6 +26,9 @@ var _ ifaces.Engineer = &MockEngineer{}
 //
 //		// make and configure a mocked ifaces.Engineer
 //		mockedEngineer := &MockEngineer{
+//			ClearCacheFunc: func() (int, error) {
+//				panic("mock out the ClearCache method")
+//			},
 //			CollectFunc: func(ctx context.Context, info *models.RepoInfo, opts ...models.CollectOption) *models.RepoInfo {
 //				panic("mock out the Collect method")
 //			},
@@ -50,6 +53,9 @@ var _ ifaces.Engineer = &MockEngineer{}
 //			ProviderEnabledFunc: func(provider string) bool {
 //				panic("mock out the ProviderEnabled method")
 //			},
+//			PurgeHistoryFunc: func(olderThanDays int) (int, error) {
+//				panic("mock out the PurgeHistory method")
+//			},
 //			QuickActionsForFunc: func(rootIndex int, subject models.SubjectKind) iter.Seq[*quickactions.QuickAction] {
 //				panic("mock out the QuickActionsFor method")
 //			},
@@ -69,6 +75,9 @@ var _ ifaces.Engineer = &MockEngineer{}
 //
 //	}
 type MockEngineer struct {
+	// ClearCacheFunc mocks the ClearCache method.
+	ClearCacheFunc func() (int, error)
+
 	// CollectFunc mocks the Collect method.
 	CollectFunc func(ctx context.Context, info *models.RepoInfo, opts ...models.CollectOption) *models.RepoInfo
 
@@ -93,6 +102,9 @@ type MockEngineer struct {
 	// ProviderEnabledFunc mocks the ProviderEnabled method.
 	ProviderEnabledFunc func(provider string) bool
 
+	// PurgeHistoryFunc mocks the PurgeHistory method.
+	PurgeHistoryFunc func(olderThanDays int) (int, error)
+
 	// QuickActionsForFunc mocks the QuickActionsFor method.
 	QuickActionsForFunc func(rootIndex int, subject models.SubjectKind) iter.Seq[*quickactions.QuickAction]
 
@@ -107,6 +119,9 @@ type MockEngineer struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// ClearCache holds details about calls to the ClearCache method.
+		ClearCache []struct {
+		}
 		// Collect holds details about calls to the Collect method.
 		Collect []struct {
 			// Ctx is the ctx argument value.
@@ -169,6 +184,11 @@ type MockEngineer struct {
 			// Provider is the provider argument value.
 			Provider string
 		}
+		// PurgeHistory holds details about calls to the PurgeHistory method.
+		PurgeHistory []struct {
+			// OlderThanDays is the olderThanDays argument value.
+			OlderThanDays int
+		}
 		// QuickActionsFor holds details about calls to the QuickActionsFor method.
 		QuickActionsFor []struct {
 			// RootIndex is the rootIndex argument value.
@@ -196,6 +216,7 @@ type MockEngineer struct {
 			Cfg *config.Config
 		}
 	}
+	lockClearCache         sync.RWMutex
 	lockCollect            sync.RWMutex
 	lockCollectDetails     sync.RWMutex
 	lockEvaluate           sync.RWMutex
@@ -204,10 +225,38 @@ type MockEngineer struct {
 	lockGetAction          sync.RWMutex
 	lockGetCheck           sync.RWMutex
 	lockProviderEnabled    sync.RWMutex
+	lockPurgeHistory       sync.RWMutex
 	lockQuickActionsFor    sync.RWMutex
 	lockRecentHistory      sync.RWMutex
 	lockRefresh            sync.RWMutex
 	lockReload             sync.RWMutex
+}
+
+// ClearCache calls ClearCacheFunc.
+func (mock *MockEngineer) ClearCache() (int, error) {
+	if mock.ClearCacheFunc == nil {
+		panic("MockEngineer.ClearCacheFunc: method is nil but Engineer.ClearCache was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockClearCache.Lock()
+	mock.calls.ClearCache = append(mock.calls.ClearCache, callInfo)
+	mock.lockClearCache.Unlock()
+	return mock.ClearCacheFunc()
+}
+
+// ClearCacheCalls gets all the calls that were made to ClearCache.
+// Check the length with:
+//
+//	len(mockedEngineer.ClearCacheCalls())
+func (mock *MockEngineer) ClearCacheCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockClearCache.RLock()
+	calls = mock.calls.ClearCache
+	mock.lockClearCache.RUnlock()
+	return calls
 }
 
 // Collect calls CollectFunc.
@@ -507,6 +556,38 @@ func (mock *MockEngineer) ProviderEnabledCalls() []struct {
 	mock.lockProviderEnabled.RLock()
 	calls = mock.calls.ProviderEnabled
 	mock.lockProviderEnabled.RUnlock()
+	return calls
+}
+
+// PurgeHistory calls PurgeHistoryFunc.
+func (mock *MockEngineer) PurgeHistory(olderThanDays int) (int, error) {
+	if mock.PurgeHistoryFunc == nil {
+		panic("MockEngineer.PurgeHistoryFunc: method is nil but Engineer.PurgeHistory was just called")
+	}
+	callInfo := struct {
+		OlderThanDays int
+	}{
+		OlderThanDays: olderThanDays,
+	}
+	mock.lockPurgeHistory.Lock()
+	mock.calls.PurgeHistory = append(mock.calls.PurgeHistory, callInfo)
+	mock.lockPurgeHistory.Unlock()
+	return mock.PurgeHistoryFunc(olderThanDays)
+}
+
+// PurgeHistoryCalls gets all the calls that were made to PurgeHistory.
+// Check the length with:
+//
+//	len(mockedEngineer.PurgeHistoryCalls())
+func (mock *MockEngineer) PurgeHistoryCalls() []struct {
+	OlderThanDays int
+} {
+	var calls []struct {
+		OlderThanDays int
+	}
+	mock.lockPurgeHistory.RLock()
+	calls = mock.calls.PurgeHistory
+	mock.lockPurgeHistory.RUnlock()
 	return calls
 }
 
