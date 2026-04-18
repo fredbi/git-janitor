@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fredbi/git-janitor/internal/models"
+	"github.com/fredbi/git-janitor/internal/ux/gadgets"
 	"github.com/fredbi/git-janitor/internal/ux/key"
 	"github.com/fredbi/git-janitor/internal/ux/types"
 )
@@ -175,6 +176,15 @@ func (p *Panel) buildLines() []string {
 			msg := elide(info.LastCommitMessage, p.Width-6) //nolint:mnd // indent
 			lines = append(lines, "    "+dimStyle.Render(msg))
 		}
+	}
+
+	// Total commits and first-commit date (absent on shallow clones).
+	if info.CommitCount > 0 {
+		line("Commits:", strconv.Itoa(info.CommitCount))
+	}
+
+	if !info.FirstCommit.IsZero() {
+		line("First commit:", gadgets.TimeAgo(info.FirstCommit)+" "+dimStyle.Render("("+info.FirstCommit.Format("2006-01-02")+")"))
 	}
 
 	// Last local update (differs from last commit when worktree is dirty).

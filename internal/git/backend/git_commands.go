@@ -94,6 +94,14 @@ func cmdLastCommitDate() []string {
 	return []string{"log", "-1", "--format=%aI"}
 }
 
+func cmdRevListCountHEAD() []string {
+	return []string{"rev-list", "--count", "HEAD"}
+}
+
+func cmdLogRootCommitDates() []string {
+	return []string{"log", "--max-parents=0", "--format=%aI", "HEAD"}
+}
+
 func cmdLastCommitMessage() []string {
 	return []string{"log", "-1", "--format=%s"}
 }

@@ -25,6 +25,8 @@ type RepoInfo struct {
 	LastCommit        time.Time
 	LastCommitMessage string    // subject line of the most recent commit on HEAD
 	LastLocalUpdate   time.Time // most recent local activity: last commit if clean, newest dirty file mtime if dirty
+	CommitCount       int       // total number of commits reachable from HEAD; 0 when unavailable or shallow
+	FirstCommit       time.Time // author date of the earliest commit reachable from HEAD; zero when unavailable or shallow
 	Worktrees      []Worktree
 	IsShallow      bool
 	HasSubmodules  bool

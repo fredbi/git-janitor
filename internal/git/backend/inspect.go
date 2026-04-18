@@ -50,6 +50,14 @@ func (r *Runner) CollectRepoInfoFast(ctx context.Context) *models.RepoInfo {
 	info.LastCommit, _ = r.LastCommitTime(ctx)        // non-fatal
 	info.LastCommitMessage = r.LastCommitMessage(ctx) // non-fatal
 	info.Worktrees, _ = r.Worktrees(ctx)              // non-fatal
+	info.IsShallow = r.IsShallow(ctx)
+
+	// Total commits and first-commit date: skip on shallow clones because
+	// the numbers would reflect the shallow window, not the real history.
+	if !info.IsShallow {
+		info.CommitCount = r.CommitCount(ctx)
+		info.FirstCommit, _ = r.FirstCommitTime(ctx) // non-fatal
+	}
 
 	// Compute last local update: last commit if clean, newest dirty file mtime if dirty.
 	info.LastLocalUpdate = deriveLastLocalUpdate(r.Dir, info.Status, info.LastCommit)
@@ -114,6 +122,13 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 	info.IsShallow = r.IsShallow(ctx)
 	info.HasSubmodules = r.HasSubmodules()
 	info.HasLFS = r.HasLFS()
+
+	// Total commits and first-commit date: skip on shallow clones because
+	// the numbers would reflect the shallow window, not the real history.
+	if !info.IsShallow {
+		info.CommitCount = r.CommitCount(ctx)
+		info.FirstCommit, _ = r.FirstCommitTime(ctx) // non-fatal
+	}
 
 	// Repository size and repack advice.
 	size := r.Size(ctx)

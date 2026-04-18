@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -45,4 +46,53 @@ func (r *Runner) LastCommitMessage(ctx context.Context) string {
 	}
 
 	return strings.TrimSpace(out)
+}
+
+// CommitCount returns the total number of commits reachable from HEAD.
+// Callers should skip this on shallow repos — the count would reflect the
+// shallow window, not the real history.
+func (r *Runner) CommitCount(ctx context.Context) int {
+	out, err := r.run(ctx, cmdRevListCountHEAD()...)
+	if err != nil {
+		return 0
+	}
+
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return 0
+	}
+
+	return n
+}
+
+// FirstCommitTime returns the author date of the earliest commit reachable
+// from HEAD (the root commit). When HEAD has multiple root commits (merged
+// histories), the earliest date is returned. Callers should skip this on
+// shallow repos — the result would be the shallow boundary, not the real
+// first commit.
+func (r *Runner) FirstCommitTime(ctx context.Context) (time.Time, error) {
+	out, err := r.run(ctx, cmdLogRootCommitDates()...)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	var earliest time.Time
+
+	for line := range strings.SplitSeq(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		t, err := time.Parse(time.RFC3339, line)
+		if err != nil {
+			continue
+		}
+
+		if earliest.IsZero() || t.Before(earliest) {
+			earliest = t
+		}
+	}
+
+	return earliest, nil
 }

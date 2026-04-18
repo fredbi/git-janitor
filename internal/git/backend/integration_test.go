@@ -128,6 +128,34 @@ func TestIntegration_Branches(t *testing.T) {
 	t.Logf("total branches: %d", len(branches))
 }
 
+func TestIntegration_CommitCount(t *testing.T) {
+	requireGit(t)
+
+	r := git.NewRunner(repoRoot(t))
+	n := r.CommitCount(context.Background())
+	t.Logf("CommitCount=%d", n)
+
+	if n <= 0 {
+		t.Errorf("expected a positive commit count for this repo, got %d", n)
+	}
+}
+
+func TestIntegration_FirstCommitTime(t *testing.T) {
+	requireGit(t)
+
+	r := git.NewRunner(repoRoot(t))
+	first, err := r.FirstCommitTime(context.Background())
+	if err != nil {
+		t.Fatalf("FirstCommitTime: %v", err)
+	}
+
+	t.Logf("FirstCommit=%s", first.Format("2006-01-02"))
+
+	if first.IsZero() {
+		t.Error("expected a non-zero first-commit time for this repo")
+	}
+}
+
 func TestIntegration_DefaultBranch(t *testing.T) {
 	requireGit(t)
 
