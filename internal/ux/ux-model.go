@@ -376,7 +376,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, m.applyFocus()
 
-	case key.RightArrow, key.L:
+	case key.RightArrow:
 		switch m.Focused {
 		case paneRepos:
 			m.Repos.CycleTab()
@@ -390,7 +390,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case key.LeftArrow, key.H:
+	case key.LeftArrow:
 		switch m.Focused {
 		case paneRepos:
 			m.Repos.CycleTabBack()
@@ -402,6 +402,44 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Status.SetMessage("Tab: " + m.Right.ActiveTabName())
 
 			return m, nil
+		}
+
+	case key.L:
+		// Vim-style tab cycling — suppressed when the focused panel has
+		// an active text input, so letters can be typed verbatim.
+		if !m.focusedCapturesInput() {
+			switch m.Focused {
+			case paneRepos:
+				m.Repos.CycleTab()
+				m.Status.SetMessage("Root: " + m.Repos.ActiveTabName())
+
+				return m, m.forceRepoCheck()
+			case paneRight:
+				m.Right.CycleTab()
+				m.Status.SetMessage("Tab: " + m.Right.ActiveTabName())
+
+				return m, nil
+			default:
+				// paneInput is handled earlier in the dispatch.
+			}
+		}
+
+	case key.H:
+		if !m.focusedCapturesInput() {
+			switch m.Focused {
+			case paneRepos:
+				m.Repos.CycleTabBack()
+				m.Status.SetMessage("Root: " + m.Repos.ActiveTabName())
+
+				return m, m.forceRepoCheck()
+			case paneRight:
+				m.Right.CycleTabBack()
+				m.Status.SetMessage("Tab: " + m.Right.ActiveTabName())
+
+				return m, nil
+			default:
+				// paneInput is handled earlier in the dispatch.
+			}
 		}
 	}
 
@@ -1377,6 +1415,22 @@ func (m *Model) buildActionList() string {
 	b.WriteString("\n  " + warn.Render("!") + " = destructive (requires confirmation)\n")
 
 	return b.String()
+}
+
+// focusedCapturesInput reports whether the currently focused pane has an
+// active text input that expects to receive keystrokes verbatim (e.g. the
+// repos panel filter, or a modal prompt on the right pane). When true,
+// letter-key shortcuts must not be intercepted at the model level.
+func (m *Model) focusedCapturesInput() bool {
+	switch m.Focused {
+	case paneRepos:
+		return m.Repos.IsCapturingInput()
+	case paneRight:
+		return m.Right.IsCapturingInput()
+	default:
+		// paneInput is handled earlier in the dispatch.
+		return false
+	}
 }
 
 // setTheme propagates the current theme to all sub-components.

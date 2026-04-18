@@ -210,12 +210,22 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
+// IsCapturingInput reports whether the panel has an active text input that
+// should receive keystrokes verbatim. The filter text input is always
+// focused while the repos panel is focused, so letter keys must not be
+// intercepted for navigation.
+func (p *Panel) IsCapturingInput() bool {
+	return p.Filter.Focused()
+}
+
 func (p *Panel) handleKey(msg tea.KeyMsg) tea.Cmd {
 	switch binding := key.MsgBinding(msg); binding {
-	case key.Up, key.Down, key.K, key.J, key.PageUp, key.PageDown, key.Home, key.End:
+	case key.Up, key.Down, key.PageUp, key.PageDown, key.Home, key.End:
 		// Navigation keys go to the list, then we hop over any header
 		// rows in the direction of movement so the cursor never rests
-		// on a non-selectable row.
+		// on a non-selectable row. Vim-style j/k are omitted because
+		// the filter input is always focused — those letters must be
+		// typeable into the filter box.
 		var cmd tea.Cmd
 		p.Tabs[p.Active].List, cmd = p.Tabs[p.Active].List.Update(msg)
 		p.skipHeaders(navDirection(binding))
@@ -433,9 +443,9 @@ func (p *Panel) SelectedRepo() (models.RepoItem, bool) {
 // a repo — defensively scan up if it isn't.
 func navDirection(b key.Binding) int {
 	switch b {
-	case key.Up, key.K, key.PageUp, key.End:
+	case key.Up, key.PageUp, key.End:
 		return -1
-	case key.Down, key.J, key.PageDown, key.Home:
+	case key.Down, key.PageDown, key.Home:
 		return +1
 	default:
 		return +1

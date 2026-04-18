@@ -338,9 +338,16 @@ func (p *Panel) buildGitHubLines(labelStyle, valStyle, dimStyle, warnStyle lipgl
 		gh.StarCount, gh.ForkCount, gh.OpenIssues, gh.OpenPRs)
 	lines = append(lines, "  "+valStyle.Render(counts))
 
-	// License.
+	// License. GitHub returns "NOASSERTION" when its classifier cannot
+	// identify the license (e.g. a custom preamble on an otherwise standard
+	// text); render it as "unclassified" instead of the raw SPDX sentinel.
 	if gh.License != "" {
-		line("License:", gh.License)
+		display := gh.License
+		if display == "NOASSERTION" {
+			display = "unclassified"
+		}
+
+		line("License:", display)
 	}
 
 	// Archived.
