@@ -187,6 +187,21 @@ func (p *Panel) buildLines() []string {
 		line("First commit:", gadgets.TimeAgo(info.FirstCommit)+" "+dimStyle.Render("("+info.FirstCommit.Format("2006-01-02")+")"))
 	}
 
+	if info.LastSemverTag != "" {
+		suffix := "(" + gadgets.TimeAgo(info.LastSemverDate)
+		if info.CommitsSinceLastTag > 0 {
+			suffix += fmt.Sprintf(", +%d commit", info.CommitsSinceLastTag)
+			if info.CommitsSinceLastTag > 1 {
+				suffix += "s"
+			}
+		}
+
+		suffix += ")"
+		line("Latest tag:", info.LastSemverTag+" "+dimStyle.Render(suffix))
+	} else {
+		line("Latest tag:", dimStyle.Render("no tag"))
+	}
+
 	// Last local update (differs from last commit when worktree is dirty).
 	if !info.LastLocalUpdate.IsZero() && info.LastLocalUpdate != info.LastCommit {
 		line("Last update:", info.LastLocalUpdate.Format("2006-01-02 15:04")+" "+dimStyle.Render("(dirty files)"))

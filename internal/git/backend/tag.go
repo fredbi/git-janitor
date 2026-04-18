@@ -19,6 +19,22 @@ var (
 	semverWithoutV = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9.]+))?(?:\+[a-zA-Z0-9.]+)?$`)
 )
 
+// LatestTagSummary returns (LastTagDate, LastSemverTag, LastSemverDate)
+// using only a single cheap `git tag -l` call.
+//
+// Unlike [Runner.Tags] it skips per-tag reachability checks (one git
+// subprocess per tag) and the `ls-remote` sync check (a network-bound
+// call), so it is safe to use in the fast-path collection. Zero values
+// are returned when the repository has no tags or the command fails.
+func (r *Runner) LatestTagSummary(ctx context.Context) (time.Time, string, time.Time) {
+	out, err := r.run(ctx, cmdTagList()...)
+	if err != nil {
+		return time.Time{}, "", time.Time{}
+	}
+
+	return models.DeriveTagSummary(parseTags(out))
+}
+
 // Tags lists all tags with metadata.
 //
 // It fetches tag info in a single git command, then enriches with:

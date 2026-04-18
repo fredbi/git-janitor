@@ -39,13 +39,23 @@ func (c TagsLocalOnly) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], 
 		return noAlert(c.Name())
 	}
 
-	suggestion := tagSuggestion("push-tag", subjects)
+	// Two legitimate intents for local-only tags:
+	//  - Forgotten-to-push tags → "push-tag" publishes them.
+	//  - Orphan tags (e.g. carried over from a subtree migration that no
+	//    longer lives on the remote) → "delete-local-tag" cleans them up.
+	// The user picks the right action per tag.
+	pushSuggestion := tagSuggestion("push-tag", subjects)
+	deleteSuggestion := tagSuggestion("delete-local-tag", subjects)
+
 	return singleAlert(models.Alert{
-		CheckName:   c.Name(),
-		Severity:    models.SeverityLow,
-		Summary:     fmt.Sprintf("%d tag(s) exist locally but not on remote", len(subjects)),
-		Detail:      strings.Join(suggestion.SubjectNames(), ", "),
-		Suggestions: []models.ActionSuggestion{suggestion},
+		CheckName: c.Name(),
+		Severity:  models.SeverityLow,
+		Summary:   fmt.Sprintf("%d tag(s) exist locally but not on remote", len(subjects)),
+		Detail:    strings.Join(pushSuggestion.SubjectNames(), ", "),
+		Suggestions: []models.ActionSuggestion{
+			pushSuggestion,
+			deleteSuggestion,
+		},
 	}), nil
 }
 

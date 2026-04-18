@@ -59,6 +59,12 @@ func (r *Runner) CollectRepoInfoFast(ctx context.Context) *models.RepoInfo {
 		info.FirstCommit, _ = r.FirstCommitTime(ctx) // non-fatal
 	}
 
+	// Latest tag summary (cheap variant — no reachability or ls-remote).
+	info.LastTagDate, info.LastSemverTag, info.LastSemverDate = r.LatestTagSummary(ctx)
+	if info.LastSemverTag != "" {
+		info.CommitsSinceLastTag = r.CommitsSince(ctx, info.LastSemverTag)
+	}
+
 	// Compute last local update: last commit if clean, newest dirty file mtime if dirty.
 	info.LastLocalUpdate = deriveLastLocalUpdate(r.Dir, info.Status, info.LastCommit)
 
@@ -145,6 +151,10 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 	// Tags and derived summary.
 	info.Tags, _ = r.Tags(ctx, info.DefaultBranch) // non-fatal
 	info.LastTagDate, info.LastSemverTag, info.LastSemverDate = models.DeriveTagSummary(info.Tags)
+
+	if info.LastSemverTag != "" {
+		info.CommitsSinceLastTag = r.CommitsSince(ctx, info.LastSemverTag)
+	}
 
 	// Commit activity and staleness.
 	activity := r.Activity(ctx)

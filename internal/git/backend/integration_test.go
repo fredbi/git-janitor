@@ -156,6 +156,20 @@ func TestIntegration_FirstCommitTime(t *testing.T) {
 	}
 }
 
+func TestIntegration_LatestTagSummary(t *testing.T) {
+	requireGit(t)
+
+	r := git.NewRunner(repoRoot(t))
+	last, semver, semverDate := r.LatestTagSummary(context.Background())
+	t.Logf("LastTagDate=%s LastSemver=%q (%s)", last.Format("2006-01-02"), semver, semverDate.Format("2006-01-02"))
+
+	// This repo may legitimately have no tags at all — just smoke test that
+	// the call doesn't panic and values are self-consistent.
+	if semver != "" && semverDate.IsZero() {
+		t.Errorf("LastSemverTag=%q but date is zero", semver)
+	}
+}
+
 func TestIntegration_DefaultBranch(t *testing.T) {
 	requireGit(t)
 

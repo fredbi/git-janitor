@@ -32,9 +32,10 @@ type RepoInfo struct {
 	HasSubmodules  bool
 	HasLFS         bool
 	Tags           []Tag
-	LastTagDate    time.Time // most recent tag date (any tag)
-	LastSemverTag  string    // latest semver tag by version ordering
-	LastSemverDate time.Time // date of LastSemverTag
+	LastTagDate         time.Time // most recent tag date (any tag)
+	LastSemverTag       string    // latest semver tag by version ordering
+	LastSemverDate      time.Time // date of LastSemverTag
+	CommitsSinceLastTag int       // commits on HEAD since LastSemverTag; 0 when there is no tag
 
 	// Cache metadata.
 	CollectedAt  time.Time    // when this info was last collected (for cache TTL)

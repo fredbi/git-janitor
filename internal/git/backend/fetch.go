@@ -65,6 +65,23 @@ func (r *Runner) CommitCount(ctx context.Context) int {
 	return n
 }
 
+// CommitsSince returns the number of commits reachable from HEAD but not
+// from the given ref (i.e. commits added on HEAD since ref). Returns 0 on
+// error or when the ref is invalid.
+func (r *Runner) CommitsSince(ctx context.Context, ref string) int {
+	out, err := r.run(ctx, cmdRevListCountRange(ref+"..HEAD")...)
+	if err != nil {
+		return 0
+	}
+
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return 0
+	}
+
+	return n
+}
+
 // FirstCommitTime returns the author date of the earliest commit reachable
 // from HEAD (the root commit). When HEAD has multiple root commits (merged
 // histories), the earliest date is returned. Callers should skip this on

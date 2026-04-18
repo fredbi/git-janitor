@@ -98,6 +98,10 @@ func cmdRevListCountHEAD() []string {
 	return []string{"rev-list", "--count", "HEAD"}
 }
 
+func cmdRevListCountRange(rangeSpec string) []string {
+	return []string{"rev-list", "--count", rangeSpec}
+}
+
 func cmdLogRootCommitDates() []string {
 	return []string{"log", "--max-parents=0", "--format=%aI", "HEAD"}
 }
@@ -205,6 +209,10 @@ func cmdPushRefspec(remote, src, dst string) []string {
 
 func cmdPushTag(remote, tag string) []string {
 	return []string{"push", remote, tag}
+}
+
+func cmdDeleteLocalTag(tag string) []string {
+	return []string{"tag", "-d", tag}
 }
 
 func cmdGC() []string {

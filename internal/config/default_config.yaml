@@ -27,7 +27,8 @@ defaults:
       # Config audit
       - name: config-no-email
       - name: config-unsigned
-      # Tags (tags-local-only intentionally omitted — sensitive, enable per-root)
+      # Tags
+      - name: tags-local-only
       - name: tags-remote-only
       # File stats
       - name: filestats-large-files
@@ -83,6 +84,8 @@ defaults:
         auto: false
       - name: fetch-tags
         auto: true
+      - name: delete-local-tag
+        auto: false
       # Staleness actions
       - name: git-stash-dirty
         auto: false

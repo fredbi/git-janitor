@@ -266,6 +266,17 @@ func (r *Runner) PushTag(ctx context.Context, name string) models.ActionResult {
 	return models.ActionResult{OK: true, Message: fmt.Sprintf("pushed tag %s to origin", name)}
 }
 
+// DeleteLocalTag removes a tag from the local repository.
+// The tag is not touched on any remote.
+func (r *Runner) DeleteLocalTag(ctx context.Context, name string) models.ActionResult {
+	_, err := r.run(ctx, cmdDeleteLocalTag(name)...)
+	if err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("delete local tag %s failed: %v", name, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "deleted local tag " + name}
+}
+
 // Compact runs git gc to reclaim space and optimize the repository.
 //
 // This is the standard garbage collection pass: repacks objects, prunes
