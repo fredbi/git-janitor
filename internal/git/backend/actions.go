@@ -296,9 +296,42 @@ func (r *Runner) Compact(ctx context.Context) models.ActionResult {
 // compression settings (--depth=50 --window=250). Use this when
 // [RepoSize.RepackAdvised] is true or the repository has significant bloat.
 //
+// Unreachable objects are preserved: anything within gc.pruneExpire
+// (default 2 weeks) or reachable from the reflog survives. For deeper
+// cleanup see [Runner.CompactDeepClean].
+//
 // The timeout is extended to 10 minutes.
 func (r *Runner) CompactAggressive(ctx context.Context) models.ActionResult {
 	return r.runGC(ctx, cmdGCAggressive()...)
+}
+
+// deepCleanTimeout caps the combined duration of reflog expiry + gc --prune=now --aggressive.
+const deepCleanTimeout = 15 * time.Minute
+
+// CompactDeepClean expires reflogs and runs git gc --prune=now --aggressive.
+//
+// This is a one-way cleanup: any object not reachable from refs is
+// permanently deleted, including objects that a standard gc would preserve
+// (reflog-referenced, within gc.pruneExpire). Use this only when
+// [RepoSize.UnreachableBloat] indicates that aggressive gc cannot reclaim
+// the wasted space.
+//
+// The combined timeout is 15 minutes.
+func (r *Runner) CompactDeepClean(ctx context.Context) models.ActionResult {
+	origTimeout := r.Timeout
+	r.Timeout = deepCleanTimeout
+
+	defer func() { r.Timeout = origTimeout }()
+
+	if _, err := r.run(ctx, cmdReflogExpireAll()...); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("reflog expire failed: %v", err)}
+	}
+
+	if _, err := r.run(ctx, cmdGCDeepClean()...); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("gc --prune=now --aggressive failed: %v", err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "reflog expired + gc --prune=now --aggressive completed"}
 }
 
 // runGC executes a git gc variant with an extended timeout.

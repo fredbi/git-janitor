@@ -41,6 +41,21 @@ type HealthReport struct {
 	GCReasons []string
 }
 
+// StaleSubmoduleDir is an orphan directory under .git/modules/ whose
+// submodule name is not referenced by any [submodule "..."] stanza in
+// the repository's .git/config. These are historical leftovers (removed
+// submodules, renamed paths) that a standard git gc does not reclaim.
+type StaleSubmoduleDir struct {
+	// Name is the submodule name (path under .git/modules/, may contain slashes).
+	Name string
+
+	// Path is the absolute filesystem path to the orphan module directory.
+	Path string
+
+	// SizeBytes is the total on-disk size of the orphan directory.
+	SizeBytes int64
+}
+
 // RepoSize holds size metrics for a repository.
 type RepoSize struct {
 	// GitDirBytes is the total size of the .git directory on disk.
@@ -50,8 +65,21 @@ type RepoSize struct {
 	ReachableBytes int64
 
 	// RepackAdvised is true when conditions suggest git repack would be beneficial.
+	// Triggered by pack count, loose/packed ratio, or oversized .git.
+	// A standard aggressive gc fixes these.
 	RepackAdvised bool
 
 	// RepackReasons lists human-readable reasons why repack is advised.
 	RepackReasons []string
+
+	// UnreachableBloat is true when the .git directory is significantly
+	// larger than reachable objects, indicating unreachable objects held
+	// alive by reflog entries or kept by the default grace period.
+	// A standard gc does not reclaim this space; a deep clean is required
+	// (reflog expiry + gc --prune=now).
+	UnreachableBloat bool
+
+	// UnreachableBloatReasons lists human-readable reasons why deep clean
+	// is advised.
+	UnreachableBloatReasons []string
 }

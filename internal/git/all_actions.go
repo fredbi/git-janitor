@@ -18,6 +18,8 @@ func AllActions() iter.Seq[ifaces.Action] {
 		actions.NewDeleteLocalClone(),
 		actions.NewRunGC(),
 		actions.NewRunGCAggressive(),
+		actions.NewRunGCDeepClean(),
+		actions.NewCleanStaleSubmoduleDirs(),
 		actions.NewRenameRemote(),
 		actions.NewPushTag(),
 		actions.NewFetchTags(),

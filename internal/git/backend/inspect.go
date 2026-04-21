@@ -129,6 +129,9 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 	info.HasSubmodules = r.HasSubmodules()
 	info.HasLFS = r.HasLFS()
 
+	// Orphaned .git/modules/* directories (submodules removed long ago).
+	info.StaleSubmoduleDirs = r.StaleSubmoduleDirs(ctx)
+
 	// Total commits and first-commit date: skip on shallow clones because
 	// the numbers would reflect the shallow window, not the real history.
 	if !info.IsShallow {
@@ -184,6 +187,9 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 		// Check merge and rebase feasibility for unmerged local branches.
 		r.CheckMergeable(ctx, info.Branches, info.DefaultBranch)
 		r.CheckRebaseable(ctx, info.Branches, info.DefaultBranch)
+
+		// Unique storage each local non-default branch holds alive.
+		r.MarkBranchUniqueBytes(ctx, info.Branches, info.DefaultBranch)
 
 		// For fork repos: also check upstream remote branches.
 		upstreamPrefix := models.RemoteUpstream + "/"

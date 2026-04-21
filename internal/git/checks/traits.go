@@ -2,7 +2,9 @@ package checks
 
 import (
 	"context"
+	"fmt"
 	"iter"
+	"strings"
 
 	"github.com/fredbi/git-janitor/internal/models"
 )
@@ -76,6 +78,64 @@ func (c Submodules) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], err
 		CheckName: c.Name(),
 		Severity:  models.SeverityInfo,
 		Summary:   "repository uses git submodules",
+	}), nil
+}
+
+// StaleSubmodules detects orphaned directories under .git/modules/
+// whose submodule name is no longer referenced by .git/config.
+// These are residue from removed or renamed submodules and hold space
+// that a standard git gc cannot reclaim.
+type StaleSubmodules struct {
+	gitCheck
+}
+
+func NewStaleSubmodules() StaleSubmodules {
+	return StaleSubmodules{
+		gitCheck: gitCheck{
+			Describer: models.NewDescriber(
+				"stale-submodule-dirs",
+				"detects orphaned .git/modules/* directories from removed submodules",
+			),
+		},
+	}
+}
+
+// Evaluate inspects the StaleSubmoduleDirs field from RepoInfo.
+func (c StaleSubmodules) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	return c.evaluate(info)
+}
+
+func (c StaleSubmodules) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	if len(info.StaleSubmoduleDirs) == 0 {
+		return noAlert(c.Name())
+	}
+
+	var total int64
+
+	const maxReported = 10
+
+	limit := min(len(info.StaleSubmoduleDirs), maxReported)
+	lines := make([]string, 0, limit)
+
+	for _, s := range info.StaleSubmoduleDirs {
+		total += s.SizeBytes
+	}
+
+	for _, s := range info.StaleSubmoduleDirs[:limit] {
+		lines = append(lines, fmt.Sprintf("%s (%s)", s.Name, models.FormatBytes(s.SizeBytes)))
+	}
+
+	return singleAlert(models.Alert{
+		CheckName: c.Name(),
+		Severity:  models.SeverityLow,
+		Summary: fmt.Sprintf("%d orphan .git/modules/* dir(s) using %s",
+			len(info.StaleSubmoduleDirs), models.FormatBytes(total)),
+		Detail: strings.Join(lines, "; "),
+		Suggestions: []models.ActionSuggestion{{
+			ActionName:  "clean-stale-submodule-dirs",
+			SubjectKind: models.SubjectRepo,
+			Subjects:    simpleSubject(info.Path),
+		}},
 	}), nil
 }
 

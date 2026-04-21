@@ -15,6 +15,7 @@ func AllChecks() iter.Seq[ifaces.Check] {
 	return slices.Values([]ifaces.Check{
 		checks.NewHealthGCAdvised(),
 		checks.NewSizeRepackAdvised(),
+		checks.NewUnreachableBloat(),
 		checks.NewHealthFSCK(),
 		checks.NewBranchLagging(),
 		checks.NewBranchMergedNotDeleted(),
@@ -23,6 +24,7 @@ func AllChecks() iter.Seq[ifaces.Check] {
 		checks.NewBranchDiverged(),
 		checks.NewBranchNotMergeable(),
 		checks.NewBranchEmpty(),
+		checks.NewBranchUniqueSize(),
 		checks.NewRemoteNoOrigin(),
 		checks.NewRemoteMisnamedUpstream(),
 		checks.NewTagsLocalOnly(),
@@ -35,6 +37,7 @@ func AllChecks() iter.Seq[ifaces.Check] {
 		checks.NewBinaryFiles(),
 		checks.NewShallow(),
 		checks.NewSubmodules(),
+		checks.NewStaleSubmodules(),
 		checks.NewLFS(),
 		checks.NewInactiveDirty(),
 		checks.NewStaleDirty(),

@@ -25,19 +25,20 @@ const (
 	// repackGitDirThreshold triggers repack advice when .git exceeds this size.
 	repackGitDirBytes = 500 * 1024 * 1024 // 500 MB
 
-	// repackWasteThreshold triggers repack advice when the .git directory is
-	// significantly larger than the reachable objects (bloat from old packs,
-	// reflogs, etc.).
-	repackWasteRatio = 2.0
+	// bloatWasteRatio triggers the unreachable-bloat advisory when the
+	// .git directory is significantly larger than the reachable objects
+	// (bloat from unreachable objects held alive by reflogs or the default
+	// gc grace period). A standard gc will not reclaim this space.
+	bloatWasteRatio = 2.0
 
-	// repackMinGitDirBytes is the minimum .git size for the waste ratio
+	// bloatMinGitDirBytes is the minimum .git size for the waste ratio
 	// check to apply. Below this, structural overhead (hooks, logs, refs,
 	// pack indexes) dominates and creates misleading ratios.
-	repackMinGitDirBytes = 5 * 1024 * 1024 // 5 MB
+	bloatMinGitDirBytes = 5 * 1024 * 1024 // 5 MB
 
-	// repackMinWasteBytes is the minimum absolute waste (gitDir - reachable)
+	// bloatMinWasteBytes is the minimum absolute waste (gitDir - reachable)
 	// required to trigger the bloat advisory.
-	repackMinWasteBytes = 1024 * 1024 // 1 MB
+	bloatMinWasteBytes = 1024 * 1024 // 1 MB
 )
 
 // Size collects repository size metrics.
@@ -163,12 +164,18 @@ func (r *Runner) evaluateRepackAdvice(ctx context.Context, s *models.RepoSize) {
 	// .git directory is much larger than reachable objects (bloat).
 	// Skip for small repos (< 5 MB .git) where structural overhead dominates.
 	// Skip if absolute waste is below 1 MB.
+	//
+	// This signal is categorised as unreachable-bloat rather than repack-advised
+	// because a standard (even aggressive) gc preserves unreachable objects that
+	// are within gc.pruneExpire or still referenced by the reflog — so repack
+	// will not reclaim this space. Only a deep clean (reflog expiry +
+	// gc --prune=now) resolves it.
 	waste := s.GitDirBytes - s.ReachableBytes
-	if s.GitDirBytes > repackMinGitDirBytes &&
-		s.ReachableBytes > 0 && waste > repackMinWasteBytes &&
-		float64(s.GitDirBytes)/float64(s.ReachableBytes) > repackWasteRatio {
-		s.RepackAdvised = true
-		s.RepackReasons = append(s.RepackReasons,
+	if s.GitDirBytes > bloatMinGitDirBytes &&
+		s.ReachableBytes > 0 && waste > bloatMinWasteBytes &&
+		float64(s.GitDirBytes)/float64(s.ReachableBytes) > bloatWasteRatio {
+		s.UnreachableBloat = true
+		s.UnreachableBloatReasons = append(s.UnreachableBloatReasons,
 			fmt.Sprintf(".git (%s) is %.1fx larger than reachable objects (%s)",
 				models.FormatBytes(s.GitDirBytes),
 				float64(s.GitDirBytes)/float64(s.ReachableBytes),

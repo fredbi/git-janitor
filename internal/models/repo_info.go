@@ -13,25 +13,30 @@ type RepoInfo struct {
 	RootIndex int
 
 	// Core git data.
-	Path           string
-	IsGit          bool
-	Status         Status
-	Branches       []Branch
-	Remotes        []Remote
-	Stashes        []Stash
-	DefaultBranch  string
-	SCM            RepoSCM  // github, gitlab, other, no-scm
-	Kind           RepoKind // clone, fork, not-git
+	Path              string
+	IsGit             bool
+	Status            Status
+	Branches          []Branch
+	Remotes           []Remote
+	Stashes           []Stash
+	DefaultBranch     string
+	SCM               RepoSCM  // github, gitlab, other, no-scm
+	Kind              RepoKind // clone, fork, not-git
 	LastCommit        time.Time
 	LastCommitMessage string    // subject line of the most recent commit on HEAD
 	LastLocalUpdate   time.Time // most recent local activity: last commit if clean, newest dirty file mtime if dirty
 	CommitCount       int       // total number of commits reachable from HEAD; 0 when unavailable or shallow
 	FirstCommit       time.Time // author date of the earliest commit reachable from HEAD; zero when unavailable or shallow
-	Worktrees      []Worktree
-	IsShallow      bool
-	HasSubmodules  bool
-	HasLFS         bool
-	Tags           []Tag
+	Worktrees         []Worktree
+	IsShallow         bool
+	HasSubmodules     bool
+	HasLFS            bool
+
+	// StaleSubmoduleDirs lists orphan directories under .git/modules/
+	// whose name is no longer referenced by .git/config. Nil when the
+	// repository has no .git/modules/ tree.
+	StaleSubmoduleDirs  []StaleSubmoduleDir
+	Tags                []Tag
 	LastTagDate         time.Time // most recent tag date (any tag)
 	LastSemverTag       string    // latest semver tag by version ordering
 	LastSemverDate      time.Time // date of LastSemverTag

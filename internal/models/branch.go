@@ -49,6 +49,16 @@ type Branch struct {
 	// during full collection. False means the branch has diverged.
 	AheadOnly bool
 
+	// UniqueBytes is the on-disk size of objects (commits, trees, blobs)
+	// reachable from this branch tip but not from any other ref. This is
+	// the storage that deleting this branch would make unreachable, and
+	// that a subsequent deep-clean could reclaim.
+	//
+	// -1 means not computed. 0 means the branch holds no unique objects
+	// (fully subsumed by other refs). Populated only for local,
+	// non-default branches during full collection.
+	UniqueBytes int64
+
 	// Detail is populated on demand by CollectDetails (nil until requested).
 	Detail *BranchDetail
 }

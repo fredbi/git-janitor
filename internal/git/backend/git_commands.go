@@ -223,6 +223,14 @@ func cmdGCAggressive() []string {
 	return []string{"gc", "--aggressive"}
 }
 
+func cmdGCDeepClean() []string {
+	return []string{"gc", "--prune=now", "--aggressive"}
+}
+
+func cmdReflogExpireAll() []string {
+	return []string{"reflog", "expire", "--expire=now", "--expire-unreachable=now", "--all"}
+}
+
 // --- Details (on-demand) ---
 
 func cmdLogMessage(ref string) []string {
@@ -301,8 +309,13 @@ func cmdRevParseGitDir() []string {
 	return []string{"rev-parse", "--git-dir"}
 }
 
+// cmdRevListDiskUsage returns the on-disk size of every reachable object
+// (commits, trees and blobs) across all refs. The --objects flag is
+// essential: without it, --disk-usage only counts commit objects — a
+// fraction of real reachability — which makes .git-size / reachable
+// ratio checks wildly misleading on any history-heavy repo.
 func cmdRevListDiskUsage() []string {
-	return []string{"rev-list", "--disk-usage", "--all"}
+	return []string{"rev-list", "--disk-usage", "--objects", "--all"}
 }
 
 // --- File stats ---
@@ -311,8 +324,41 @@ func cmdLsTree() []string {
 	return []string{"ls-tree", "-r", "-l", "HEAD"}
 }
 
+// cmdLsTreeHEAD recurses into HEAD without the trailing size column —
+// used to find gitlink entries (mode 160000) for live submodules.
+func cmdLsTreeHEAD() []string {
+	return []string{"ls-tree", "-r", "HEAD"}
+}
+
+// cmdConfigGetRegexpBlob reads a config-style blob at a given revision
+// (e.g. HEAD:.gitmodules) and filters keys by pattern.
+func cmdConfigGetRegexpBlob(blob, pattern string) []string {
+	return []string{"config", "--blob", blob, "--get-regexp", pattern}
+}
+
 func cmdRevListObjects() []string {
 	return []string{"rev-list", "--objects", "--all"}
+}
+
+// cmdForEachRefNames returns the command that prints every ref name,
+// one per line.
+func cmdForEachRefNames() []string {
+	return []string{"for-each-ref", "--format=%(refname)"}
+}
+
+// cmdRevListUniqueDiskUsage builds "rev-list --objects --disk-usage
+// <target> ^<other1> ^<other2> …", which sums the on-disk size of
+// objects reachable from target but not from any of the exclusions.
+func cmdRevListUniqueDiskUsage(target string, exclude []string) []string {
+	base := []string{"rev-list", "--objects", "--disk-usage", target}
+	args := make([]string, 0, len(base)+len(exclude))
+	args = append(args, base...)
+
+	for _, ref := range exclude {
+		args = append(args, "^"+ref)
+	}
+
+	return args
 }
 
 func cmdCatFileBatchCheck() []string {

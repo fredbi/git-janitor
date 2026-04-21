@@ -16,11 +16,13 @@ defaults:
       - name: branch-diverged
       - name: branch-not-mergeable
       - name: branch-empty
+      - name: branch-unique-size
       # Worktree
       - name: dirty-worktree
       # Health & maintenance
       - name: health-gc-advised
       - name: size-repack-advised
+      - name: size-unreachable-bloat
       - name: health-fsck-errors
       # Activity
       - name: activity-stale
@@ -47,6 +49,7 @@ defaults:
       - name: traits-shallow
       - name: traits-submodules
       - name: traits-lfs
+      - name: stale-submodule-dirs
       # GitHub (API-based, require GITHUB_TOKEN or GH_TOKEN)
       - name: github-repo-archived
       - name: github-default-branch-mismatch
@@ -78,6 +81,10 @@ defaults:
       - name: run-gc
         auto: true
       - name: run-gc-aggressive
+        auto: false
+      - name: run-gc-deep-clean
+        auto: false
+      - name: clean-stale-submodule-dirs
         auto: false
       # Tags
       - name: push-tag

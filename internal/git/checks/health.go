@@ -35,6 +35,13 @@ func (c HealthGCAdvised) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert]
 		return noAlert(c.Name())
 	}
 
+	// Same 10 MiB floor as size-repack-advised: on tiny repos the loose-object
+	// / prune-packable / pack-count heuristics fire on noise that a user
+	// won't meaningfully benefit from cleaning up.
+	if info.Size != nil && info.Size.GitDirBytes < gcAdviceMinGitDirBytes {
+		return noAlert(c.Name())
+	}
+
 	return singleAlert(models.Alert{
 		CheckName: c.Name(),
 		Severity:  models.SeverityLow,
@@ -47,6 +54,12 @@ func (c HealthGCAdvised) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert]
 		}},
 	}), nil
 }
+
+// gcAdviceMinGitDirBytes silences gc/repack/bloat advisories on repos
+// small enough that structural overhead dominates and any heuristic is
+// noise. Shared by health-gc-advised, size-repack-advised, and
+// size-unreachable-bloat.
+const gcAdviceMinGitDirBytes = 10 * 1024 * 1024 // 10 MiB
 
 // SizeRepackAdvised detects when git repack would be beneficial,
 // based on pack count, loose/packed ratio, .git size, and bloat ratio.
@@ -75,6 +88,10 @@ func (c SizeRepackAdvised) evaluate(info *models.RepoInfo) (iter.Seq[models.Aler
 		return noAlert(c.Name())
 	}
 
+	if info.Size.GitDirBytes < gcAdviceMinGitDirBytes {
+		return noAlert(c.Name())
+	}
+
 	return singleAlert(models.Alert{
 		CheckName: c.Name(),
 		Severity:  models.SeverityLow,
@@ -82,6 +99,53 @@ func (c SizeRepackAdvised) evaluate(info *models.RepoInfo) (iter.Seq[models.Aler
 		Detail:    strings.Join(info.Size.RepackReasons, "; "),
 		Suggestions: []models.ActionSuggestion{{
 			ActionName:  "run-gc-aggressive",
+			SubjectKind: models.SubjectRepo,
+			Subjects:    simpleSubject(info.Path),
+		}},
+	}), nil
+}
+
+// UnreachableBloat detects repositories where the .git directory is
+// significantly larger than reachable objects — a signal that unreachable
+// objects (held alive by reflogs or the default gc grace period) dominate
+// the pack. Aggressive gc will not reclaim this space; a deep clean
+// (reflog expiry + gc --prune=now) is required.
+type UnreachableBloat struct {
+	gitCheck
+}
+
+func NewUnreachableBloat() UnreachableBloat {
+	return UnreachableBloat{
+		gitCheck: gitCheck{
+			Describer: models.NewDescriber(
+				"size-unreachable-bloat",
+				"detects .git bloat from unreachable objects that a standard gc cannot reclaim",
+			),
+		},
+	}
+}
+
+// Evaluate inspects the RepoSize from RepoInfo.
+func (c UnreachableBloat) Evaluate(_ context.Context, info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	return c.evaluate(info)
+}
+
+func (c UnreachableBloat) evaluate(info *models.RepoInfo) (iter.Seq[models.Alert], error) {
+	if info.Size == nil || !info.Size.UnreachableBloat {
+		return noAlert(c.Name())
+	}
+
+	if info.Size.GitDirBytes < gcAdviceMinGitDirBytes {
+		return noAlert(c.Name())
+	}
+
+	return singleAlert(models.Alert{
+		CheckName: c.Name(),
+		Severity:  models.SeverityLow,
+		Summary:   "unreachable objects dominate .git — deep clean required",
+		Detail:    strings.Join(info.Size.UnreachableBloatReasons, "; "),
+		Suggestions: []models.ActionSuggestion{{
+			ActionName:  "run-gc-deep-clean",
 			SubjectKind: models.SubjectRepo,
 			Subjects:    simpleSubject(info.Path),
 		}},

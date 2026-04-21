@@ -73,3 +73,41 @@ func (a RunGCAggressive) execute(ctx context.Context, r *backend.Runner, _ *mode
 
 	return result.ToResult(), nil
 }
+
+// RunGCDeepClean expires reflogs and runs git gc --prune=now --aggressive.
+//
+// This is destructive and irreversible: any unreachable object is dropped,
+// including those that a standard gc would preserve (reflog-referenced or
+// within gc.pruneExpire). Recovery via reflog is not possible afterwards.
+type RunGCDeepClean struct {
+	gitAction
+}
+
+func NewRunGCDeepClean() RunGCDeepClean {
+	return RunGCDeepClean{
+		gitAction: gitAction{
+			Describer: models.NewDescriber(
+				"run-gc-deep-clean",
+				"expire reflogs and run git gc --prune=now --aggressive (destructive: loses reflog recovery)",
+			),
+		},
+	}
+}
+
+func (RunGCDeepClean) ApplyTo() models.SubjectKind { return models.SubjectRepo }
+func (RunGCDeepClean) Destructive() bool           { return true }
+
+func (a RunGCDeepClean) Execute(ctx context.Context, info *models.RepoInfo, subjects []string) (models.Result, error) {
+	runner, err := runnerCtx(ctx)
+	if err != nil {
+		return models.Result{}, err
+	}
+
+	return a.execute(ctx, runner, info, subjects)
+}
+
+func (a RunGCDeepClean) execute(ctx context.Context, r *backend.Runner, _ *models.RepoInfo, _ []string) (models.Result, error) {
+	result := r.CompactDeepClean(ctx)
+
+	return result.ToResult(), nil
+}

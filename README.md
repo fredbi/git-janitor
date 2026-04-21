@@ -4,7 +4,9 @@ A janitor for my git repos.
 
 ![Mascot](docs/images/git-janitor.png)
 
-## Features
+## Primer
+
+`git-janitor` is a local tool that monitors your git repositories cloned locally.
 
 ### Monitoring local clones
 
