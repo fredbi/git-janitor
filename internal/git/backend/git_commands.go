@@ -281,6 +281,40 @@ func cmdWorktreeRemove(path string) []string {
 	return []string{"worktree", "remove", "--force", path}
 }
 
+func cmdWorktreeRepair(path string) []string {
+	return []string{"worktree", "repair", path}
+}
+
+func cmdWorktreePrune() []string {
+	return []string{"worktree", "prune"}
+}
+
+func cmdWorktreeUnlock(path string) []string {
+	return []string{"worktree", "unlock", path}
+}
+
+// cmdWorktreeLock returns the command to lock a worktree, optionally with
+// a reason (empty reason = no --reason flag).
+func cmdWorktreeLock(path, reason string) []string {
+	args := []string{"worktree", "lock"}
+	if reason != "" {
+		args = append(args, "--reason", reason)
+	}
+
+	return append(args, path)
+}
+
+// cmdWorktreeAddPath creates a new worktree at path with a fresh branch
+// named after the path's basename (default `git worktree add <path>`
+// behaviour).
+func cmdWorktreeAddPath(path string) []string {
+	return []string{"worktree", "add", path}
+}
+
+func cmdWorktreeMove(oldPath, newPath string) []string {
+	return []string{"worktree", "move", oldPath, newPath}
+}
+
 // --- Traits ---
 
 func cmdIsShallow() []string {

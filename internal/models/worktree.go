@@ -2,7 +2,10 @@
 
 package models
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // Worktree represents a git worktree linked to a repository.
 type Worktree struct {
@@ -24,6 +27,30 @@ type Worktree struct {
 
 	// Prunable is true if the worktree path is missing and can be pruned.
 	Prunable bool
+
+	// PrunableReason describes why the worktree is prunable, when known
+	// (e.g. "gitdir file points to non-existent location"). May be empty.
+	PrunableReason string
+
+	// Locked is true if the worktree is locked against pruning / moving.
+	Locked bool
+
+	// LockReason is the reason recorded when the worktree was locked.
+	// May be empty.
+	LockReason string
+
+	// Dirty reports whether the worktree's working tree has any uncommitted
+	// changes (staged, unstaged, or untracked). Populated only during full
+	// collection and only for worktrees with an accessible path.
+	Dirty bool
+
+	// LastCommit is the author date of the commit at the worktree's HEAD.
+	// Zero when the worktree is bare, prunable, or collection failed.
+	LastCommit time.Time
+
+	// LastCommitMessage is the subject line of the commit at the worktree's HEAD.
+	// Empty when the worktree is bare, prunable, or collection failed.
+	LastCommitMessage string
 }
 
 // BranchShort returns the short branch name (e.g. "main" from "refs/heads/main").

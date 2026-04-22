@@ -147,6 +147,10 @@ func buildDetailContent(info *models.RepoInfo, scope models.ActionSuggestion) (s
 		title, content := buildStashDetail(info, name)
 
 		return title, content, "", ""
+	case models.SubjectWorktree:
+		title, content := buildWorktreeDetail(info, name)
+
+		return title, content, "", ""
 	case models.SubjectIssueDetail:
 		return buildIssueDetail(info, name)
 	default:
@@ -234,6 +238,83 @@ func buildBranchDetail(info *models.RepoInfo, name string) (string, string) {
 	}
 
 	return "Branch: " + name, "(branch not found)"
+}
+
+func buildWorktreeDetail(info *models.RepoInfo, path string) (string, string) {
+	for _, w := range info.Worktrees {
+		if w.Path != path {
+			continue
+		}
+
+		title := "Worktree: " + w.Path
+
+		var lines []string
+
+		lines = append(lines, "Path: "+w.Path)
+
+		switch {
+		case w.Bare:
+			lines = append(lines, "Kind: bare")
+		case w.Detached:
+			lines = append(lines, "Branch: (detached @ "+shortHashDisplay(w.HEAD)+")")
+		case w.Branch != "":
+			lines = append(lines, "Branch: "+strings.TrimPrefix(w.Branch, "refs/heads/"))
+		default:
+			lines = append(lines, "Branch: (none)")
+		}
+
+		if w.HEAD != "" && !w.Detached {
+			lines = append(lines, "HEAD:   "+shortHashDisplay(w.HEAD))
+		}
+
+		if w.Path == info.Path {
+			lines = append(lines, "Role:   main worktree")
+		}
+
+		if !w.LastCommit.IsZero() {
+			lines = append(lines, "Last commit: "+w.LastCommit.Format("2006-01-02 15:04")+" ("+gadgets.TimeAgo(w.LastCommit)+")")
+		}
+
+		if w.LastCommitMessage != "" {
+			lines = append(lines, "Subject: "+w.LastCommitMessage)
+		}
+
+		switch {
+		case w.Prunable:
+			reason := w.PrunableReason
+			if reason == "" {
+				reason = "worktree directory is missing"
+			}
+
+			lines = append(lines, "Status: prunable — "+reason)
+		case w.Dirty:
+			lines = append(lines, "Status: dirty (uncommitted changes)")
+		default:
+			lines = append(lines, "Status: clean")
+		}
+
+		if w.Locked {
+			reason := w.LockReason
+			if reason == "" {
+				reason = "(no reason)"
+			}
+
+			lines = append(lines, "Locked: "+reason)
+		}
+
+		return title, strings.Join(lines, "\n")
+	}
+
+	return "Worktree: " + path, "(worktree not found)"
+}
+
+func shortHashDisplay(h string) string {
+	const shortLen = 7
+	if len(h) <= shortLen {
+		return h
+	}
+
+	return h[:shortLen]
 }
 
 func buildStashDetail(info *models.RepoInfo, ref string) (string, string) {

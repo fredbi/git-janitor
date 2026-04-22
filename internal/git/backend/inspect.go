@@ -121,6 +121,10 @@ func (r *Runner) collectRepoInfo(ctx context.Context) *models.RepoInfo {
 	info.LastCommitMessage = r.LastCommitMessage(ctx) // non-fatal
 	info.Worktrees, _ = r.Worktrees(ctx)              // non-fatal
 
+	// Enrich worktrees with per-working-directory status + last commit.
+	// Cheap — most repos have only the main worktree.
+	r.MarkWorktreeDetails(ctx, info.Worktrees)
+
 	// Compute last local update: last commit if clean, newest dirty file mtime if dirty.
 	info.LastLocalUpdate = deriveLastLocalUpdate(r.Dir, info.Status, info.LastCommit)
 

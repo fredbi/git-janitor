@@ -73,6 +73,12 @@ type Model struct {
 	// nil when no confirmation is pending.
 	PendingAction *uxtypes.ExecuteActionMsg
 
+	// StatusPrompt captures an in-progress text prompt shown in the
+	// status bar (lock reason, add-worktree path, move-worktree path,
+	// …). Non-nil while the prompt is live; all keystrokes route
+	// through handleStatusPromptKey, which calls OnSubmit on Enter.
+	StatusPrompt *statusPrompt
+
 	// forceGitHubRefresh is set after action execution to force a GitHub
 	// re-fetch on the next handleRepoInfo cycle (avoids using stale data).
 	forceGitHubRefresh bool
@@ -166,6 +172,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Detail.IsRemote = m.isRemoteBranch(msg.Scope.Subjects[0].Subject)
 		}
 
+		if msg.Scope.SubjectKind == models.SubjectWorktree && len(msg.Scope.Subjects) > 0 {
+			if wt, ok := m.lookupWorktree(msg.Scope.Subjects[0].Subject); ok {
+				m.Detail.WorktreeLocked = wt.Locked
+				m.Detail.WorktreePrunable = wt.Prunable
+				m.Detail.WorktreeMain = m.LastRepoInfo != nil && wt.Path == m.LastRepoInfo.Path
+			}
+		}
+
 		if msg.OpenURL != "" {
 			m.Detail.SetURL(msg.OpenURL)
 		}
@@ -183,6 +197,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Right.SetActivityData(msg.Info)
 
 		return m, nil
+
+	case uxtypes.PromptAddWorktreeMsg:
+		return m.promptAddWorktree()
+
+	case uxtypes.PromptMoveWorktreeMsg:
+		return m.promptMoveWorktree()
 
 	case uxtypes.ShowSuggestionsMsg:
 		// Forward to the right panel — it switches to Actions tab.
@@ -205,6 +225,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// When a status-bar text prompt is live (lock reason, add/move
+		// worktree path), intercept every key so the user can type freely.
+		if m.StatusPrompt != nil {
+			return m.handleStatusPromptKey(msg)
+		}
+
 		// When a confirmation is pending, intercept Y/N.
 		if m.PendingAction != nil {
 			return m.handleConfirmKey(msg)
@@ -509,6 +535,22 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	if key.MsgBinding(msg) == key.R && m.Detail.CanRebase() {
 		return m.handleDetailAction("rebase-branch")
+	}
+
+	if key.MsgBinding(msg) == key.R && m.Detail.CanRepair() {
+		return m.queueRepairWorktree()
+	}
+
+	if key.MsgBinding(msg) == key.U && m.Detail.CanUnlock() {
+		return m.handleDetailAction("unlock-worktree")
+	}
+
+	if key.MsgBinding(msg) == key.L && m.Detail.CanLock() {
+		return m.promptLockReason()
+	}
+
+	if key.MsgBinding(msg) == key.CtrlK && m.Detail.Scope.SubjectKind != models.SubjectNone {
+		return m.openQuickActionsFromDetail()
 	}
 
 	if key.MsgBinding(msg) == key.O && m.Detail.CanOpenInBrowser() {
@@ -1060,6 +1102,236 @@ func (m *Model) View() string {
 	return base
 }
 
+// openQuickActionsFromDetail closes the detail popup and opens the
+// quick-actions popup anchored to the focused right-pane tab. The popup's
+// subject is resolved from the current tab (Worktrees, Branches, …), not
+// from the dismissed detail popup — those coincide when the user pressed
+// Enter on the same list the popup came from.
+//
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
+func (m *Model) openQuickActionsFromDetail() (tea.Model, tea.Cmd) {
+	m.Detail.Hide()
+
+	return m.openQuickActions()
+}
+
+// statusPrompt captures a live text prompt anchored in the status bar.
+// The Label is rendered before the current Value; OnSubmit is called
+// with the typed Value on Enter. Used by lock-worktree (reason), add-
+// worktree (path), move-worktree (new path), and anywhere a single
+// short string needs to be captured without switching tabs.
+type statusPrompt struct {
+	Label    string
+	Value    string
+	Hint     string // trailing hint after the value (defaults to "[Enter: submit, Esc: cancel]")
+	OnSubmit func(value string) tea.Cmd
+}
+
+// handleStatusPromptKey consumes keystrokes while any status-bar text
+// prompt is active. Enter invokes OnSubmit with the current value,
+// Esc cancels, printable runes + backspace edit the value.
+//
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
+func (m *Model) handleStatusPromptKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key.MsgBinding(msg) { //nolint:exhaustive // only Enter and Esc break the input loop
+	case key.Enter:
+		prompt := m.StatusPrompt
+		m.StatusPrompt = nil
+
+		if prompt.OnSubmit != nil {
+			return m, prompt.OnSubmit(prompt.Value)
+		}
+
+		return m, nil
+
+	case key.Esc:
+		m.StatusPrompt = nil
+		m.Status.SetMessage("Cancelled.")
+
+		return m, nil
+	}
+
+	switch msg.Type { //nolint:exhaustive // only printable + backspace are relevant
+	case tea.KeyBackspace:
+		if n := len(m.StatusPrompt.Value); n > 0 {
+			m.StatusPrompt.Value = m.StatusPrompt.Value[:n-1]
+		}
+	case tea.KeyRunes:
+		m.StatusPrompt.Value += string(msg.Runes)
+	case tea.KeySpace:
+		m.StatusPrompt.Value += " "
+	}
+
+	m.renderStatusPrompt()
+
+	return m, nil
+}
+
+// renderStatusPrompt refreshes the status bar to show the current
+// label + value + hint for the live status prompt.
+func (m *Model) renderStatusPrompt() {
+	hint := m.StatusPrompt.Hint
+	if hint == "" {
+		hint = "[Enter: submit, Esc: cancel]"
+	}
+
+	m.Status.SetMessagef("%s %s_  %s", m.StatusPrompt.Label, m.StatusPrompt.Value, hint)
+}
+
+// promptLockReason opens a status-bar prompt for the lock reason.
+//
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
+func (m *Model) promptLockReason() (tea.Model, tea.Cmd) {
+	scope := m.Detail.Scope
+	m.Detail.Hide()
+
+	if len(scope.Subjects) == 0 {
+		m.Status.SetMessage("Lock: no worktree selected.")
+
+		return m, nil
+	}
+
+	worktreePath := scope.Subjects[0].Subject
+	repoPath := m.SelectedRepo
+
+	m.StatusPrompt = &statusPrompt{
+		Label: "Lock reason (optional):",
+		OnSubmit: func(reason string) tea.Cmd {
+			return m.runAction(uxtypes.ExecuteActionMsg{
+				RepoPath:   repoPath,
+				ActionName: "lock-worktree",
+				Subjects: []models.ActionSubject{{
+					Subject: worktreePath,
+					Params:  []string{reason},
+				}},
+			})
+		},
+	}
+	m.renderStatusPrompt()
+
+	return m, nil
+}
+
+// promptAddWorktree opens a status-bar prompt for the new worktree
+// path. Default seed: <repo>/.worktrees/
+//
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
+func (m *Model) promptAddWorktree() (tea.Model, tea.Cmd) {
+	repo, ok := m.Repos.SelectedRepo()
+	if !ok || !repo.IsGit {
+		m.Status.SetMessage("Select a git repository first.")
+
+		return m, nil
+	}
+
+	repoPath := repo.Path
+	seed := filepath.Join(repoPath, ".worktrees") + string(filepath.Separator)
+
+	m.StatusPrompt = &statusPrompt{
+		Label: "New worktree path:",
+		Value: seed,
+		OnSubmit: func(path string) tea.Cmd {
+			path = strings.TrimSpace(path)
+			if path == "" || strings.HasSuffix(path, string(filepath.Separator)) {
+				m.Status.SetMessage("Add worktree: path must include a final name.")
+
+				return nil
+			}
+
+			return m.runAction(uxtypes.ExecuteActionMsg{
+				RepoPath:   repoPath,
+				ActionName: "add-worktree",
+				Subjects:   []models.ActionSubject{{Subject: path}},
+			})
+		},
+	}
+	m.renderStatusPrompt()
+
+	return m, nil
+}
+
+// promptMoveWorktree opens a status-bar prompt for the new location of
+// the currently selected linked worktree. Default seed:
+// <repo>/.worktrees/<basename-of-current-path>.
+//
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
+func (m *Model) promptMoveWorktree() (tea.Model, tea.Cmd) {
+	repo, ok := m.Repos.SelectedRepo()
+	if !ok || !repo.IsGit {
+		m.Status.SetMessage("Select a git repository first.")
+
+		return m, nil
+	}
+
+	wt, ok := m.Right.SelectedWorktree()
+	if !ok {
+		m.Status.SetMessage("No worktree selected.")
+
+		return m, nil
+	}
+
+	if wt.Path == repo.Path {
+		m.Status.SetMessage("Cannot move the main worktree.")
+
+		return m, nil
+	}
+
+	oldPath := wt.Path
+	repoPath := repo.Path
+	seed := filepath.Join(repoPath, ".worktrees", filepath.Base(oldPath))
+
+	m.StatusPrompt = &statusPrompt{
+		Label: "Move worktree to:",
+		Value: seed,
+		OnSubmit: func(newPath string) tea.Cmd {
+			newPath = strings.TrimSpace(newPath)
+			if newPath == "" {
+				m.Status.SetMessage("Move worktree: path is empty.")
+
+				return nil
+			}
+
+			return m.runAction(uxtypes.ExecuteActionMsg{
+				RepoPath:   repoPath,
+				ActionName: "move-worktree",
+				Subjects: []models.ActionSubject{{
+					Subject: oldPath,
+					Params:  []string{newPath},
+				}},
+			})
+		},
+	}
+	m.renderStatusPrompt()
+
+	return m, nil
+}
+
+// queueRepairWorktree closes the popup, hands a single-suggestion alert
+// to the Actions tab, and switches to it so the user can fill in the
+// new path via the existing ParamPrompt flow.
+//
+//nolint:ireturn // tea.Model interface return is the bubbletea handler convention
+func (m *Model) queueRepairWorktree() (tea.Model, tea.Cmd) {
+	scope := m.Detail.Scope
+	m.Detail.Hide()
+
+	alert := models.Alert{
+		CheckName: "manual-repair-worktree",
+		Severity:  models.SeverityInfo,
+		Summary:   "Repair worktree",
+		Suggestions: []models.ActionSuggestion{{
+			ActionName:  "repair-worktree",
+			SubjectKind: models.SubjectWorktree,
+			Subjects:    scope.Subjects,
+		}},
+	}
+
+	m.Right.ShowInlineSuggestions(m.SelectedRepo, alert)
+	m.Status.SetMessage("Press Enter on 'repair-worktree', then type the new path.")
+
+	return m, nil
+}
+
 // handleDetailAction closes the detail popup and dispatches the named action
 // on the popup's scope. The action goes through the standard confirmation
 // flow (Y/N in the status bar for destructive or non-auto actions).
@@ -1097,9 +1369,28 @@ func (m *Model) deleteActionName(scope models.ActionSuggestion) string {
 
 		return "delete-branch"
 
+	case models.SubjectWorktree:
+		return "delete-worktree"
+
 	default:
 		return ""
 	}
+}
+
+// lookupWorktree returns the worktree with the given path from the
+// most recent RepoInfo snapshot, if any.
+func (m *Model) lookupWorktree(path string) (models.Worktree, bool) {
+	if m.LastRepoInfo == nil {
+		return models.Worktree{}, false
+	}
+
+	for _, w := range m.LastRepoInfo.Worktrees {
+		if w.Path == path {
+			return w, true
+		}
+	}
+
+	return models.Worktree{}, false
 }
 
 // isRemoteBranch checks whether the named branch is a remote-tracking branch
@@ -1184,6 +1475,8 @@ func (m *Model) quickActionsSubject() (models.SubjectKind, bool) {
 			return models.SubjectRepo, true
 		case infos.TabBranches:
 			return models.SubjectBranch, true
+		case infos.TabWorktrees:
+			return models.SubjectWorktree, true
 		default:
 			return models.SubjectNone, false
 		}
@@ -1285,10 +1578,11 @@ func (m *Model) runQuickAction(name string) tea.Cmd {
 		"subject": repo.Path,
 	}
 
-	// When the quick action operates on a branch, resolve the subject from
-	// the selected branch in the Branches tab.
+	// Resolve the subject from the active right-pane tab.
 	subject, _ := m.quickActionsSubject()
-	if subject == models.SubjectBranch {
+
+	switch subject {
+	case models.SubjectBranch:
 		branch, ok := m.Right.SelectedBranch()
 		if !ok {
 			m.Status.SetMessage("No branch selected.")
@@ -1304,6 +1598,25 @@ func (m *Model) runQuickAction(name string) tea.Cmd {
 		// action for the same branch reuses the same directory.
 		safeBranch := strings.ReplaceAll(branch.Name, "/", "-")
 		params["worktree"] = filepath.Join(repo.Path, ".git-janitor-worktrees", safeBranch)
+
+	case models.SubjectWorktree:
+		wt, ok := m.Right.SelectedWorktree()
+		if !ok {
+			m.Status.SetMessage("No worktree selected.")
+
+			return nil
+		}
+
+		params["subject"] = wt.Path
+		params["worktree"] = wt.Path
+		params["workdir"] = wt.Path
+
+		if b := wt.BranchShort(); b != "" {
+			params["branch"] = b
+		}
+
+	default:
+		// Other subjects fall through to the repo-level defaults.
 	}
 
 	rootIndex := m.SelectedRoot

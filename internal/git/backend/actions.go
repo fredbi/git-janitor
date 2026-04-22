@@ -690,3 +690,132 @@ func (r *Runner) guardClean(ctx context.Context) *models.ActionResult {
 
 	return nil
 }
+
+// RemoveWorktree removes a linked worktree at the given path with --force
+// (mirrors the janitor's existing use of cmdWorktreeRemove elsewhere).
+// Refuses to touch the main worktree.
+func (r *Runner) RemoveWorktree(ctx context.Context, path string) models.ActionResult {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return models.ActionResult{Message: "worktree path is empty"}
+	}
+
+	mainAbs, _ := filepath.Abs(r.Dir)
+	targetAbs, _ := filepath.Abs(path)
+
+	if mainAbs != "" && mainAbs == targetAbs {
+		return models.ActionResult{Message: "refusing to remove the main worktree"}
+	}
+
+	if _, err := r.run(ctx, cmdWorktreeRemove(path)...); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("worktree remove %s failed: %v", path, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "removed worktree " + path}
+}
+
+// RepairWorktree re-links the admin files of a linked worktree that has
+// been moved on disk. Wraps `git worktree repair <path>`.
+func (r *Runner) RepairWorktree(ctx context.Context, newPath string) models.ActionResult {
+	newPath = strings.TrimSpace(newPath)
+	if newPath == "" {
+		return models.ActionResult{Message: "new path is empty"}
+	}
+
+	if _, err := r.run(ctx, cmdWorktreeRepair(newPath)...); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("worktree repair %s failed: %v", newPath, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "repaired worktree at " + newPath}
+}
+
+// PruneWorktrees removes admin files for worktrees whose working copy has
+// been deleted. Wraps `git worktree prune`.
+func (r *Runner) PruneWorktrees(ctx context.Context) models.ActionResult {
+	if _, err := r.run(ctx, cmdWorktreePrune()...); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("worktree prune failed: %v", err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "pruned stale worktree admin files"}
+}
+
+// UnlockWorktree removes the lock on a linked worktree. Wraps
+// `git worktree unlock <path>`.
+func (r *Runner) UnlockWorktree(ctx context.Context, path string) models.ActionResult {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return models.ActionResult{Message: "worktree path is empty"}
+	}
+
+	if _, err := r.run(ctx, cmdWorktreeUnlock(path)...); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("worktree unlock %s failed: %v", path, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "unlocked worktree " + path}
+}
+
+// worktreeDirMode is the mode used when creating parent directories
+// for newly added or moved worktrees (owner rwx, others rx).
+const worktreeDirMode = 0o755
+
+// AddWorktree creates a new linked worktree at the given path. Git
+// creates a fresh branch named after the path's last segment, based
+// on HEAD. Missing parent directories are created first.
+func (r *Runner) AddWorktree(ctx context.Context, path string) models.ActionResult {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return models.ActionResult{Message: "worktree path is empty"}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), worktreeDirMode); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("cannot create parent directory for %s: %v", path, err)}
+	}
+
+	if _, err := r.run(ctx, cmdWorktreeAddPath(path)...); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("worktree add %s failed: %v", path, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "added worktree at " + path}
+}
+
+// MoveWorktree relocates an existing linked worktree on disk. Wraps
+// `git worktree move <oldPath> <newPath>`. Missing parent directories
+// for the destination are created first.
+func (r *Runner) MoveWorktree(ctx context.Context, oldPath, newPath string) models.ActionResult {
+	oldPath = strings.TrimSpace(oldPath)
+	newPath = strings.TrimSpace(newPath)
+
+	if oldPath == "" || newPath == "" {
+		return models.ActionResult{Message: "source or destination path is empty"}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(newPath), worktreeDirMode); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("cannot create parent directory for %s: %v", newPath, err)}
+	}
+
+	if _, err := r.run(ctx, cmdWorktreeMove(oldPath, newPath)...); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("worktree move %s → %s failed: %v", oldPath, newPath, err)}
+	}
+
+	return models.ActionResult{OK: true, Message: "moved worktree to " + newPath}
+}
+
+// LockWorktree locks a linked worktree so it cannot be pruned or moved.
+// An empty reason omits the --reason flag and records a default lock.
+func (r *Runner) LockWorktree(ctx context.Context, path, reason string) models.ActionResult {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return models.ActionResult{Message: "worktree path is empty"}
+	}
+
+	if _, err := r.run(ctx, cmdWorktreeLock(path, reason)...); err != nil {
+		return models.ActionResult{Message: fmt.Sprintf("worktree lock %s failed: %v", path, err)}
+	}
+
+	msg := "locked worktree " + path
+	if reason != "" {
+		msg += " (" + reason + ")"
+	}
+
+	return models.ActionResult{OK: true, Message: msg}
+}

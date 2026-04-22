@@ -97,6 +97,45 @@ func TestParseWorktrees_Prunable(t *testing.T) {
 	}
 }
 
+func TestParseWorktrees_LockedAndReasons(t *testing.T) {
+	input := "worktree /home/user/repo\n" +
+		"HEAD abc1234\n" +
+		"branch refs/heads/main\n" +
+		"\n" +
+		"worktree /home/user/repo-review\n" +
+		"HEAD def5678\n" +
+		"branch refs/heads/review\n" +
+		"locked pinned for review\n" +
+		"\n" +
+		"worktree /tmp/gone\n" +
+		"HEAD 999aaa\n" +
+		"detached\n" +
+		"prunable gitdir file points to non-existent location\n" +
+		"\n" +
+		"worktree /mnt/removable/wt\n" +
+		"HEAD bbbccc\n" +
+		"branch refs/heads/dev\n" +
+		"locked\n"
+
+	wts := parseWorktrees(input)
+
+	if len(wts) != 4 {
+		t.Fatalf("got %d worktrees, want 4", len(wts))
+	}
+
+	if wts[1].LockReason != "pinned for review" || !wts[1].Locked {
+		t.Errorf("locked w/ reason: got %+v", wts[1])
+	}
+
+	if wts[2].PrunableReason != "gitdir file points to non-existent location" || !wts[2].Prunable || !wts[2].Detached {
+		t.Errorf("prunable w/ reason: got %+v", wts[2])
+	}
+
+	if !wts[3].Locked || wts[3].LockReason != "" {
+		t.Errorf("locked w/o reason: got %+v", wts[3])
+	}
+}
+
 func TestParseWorktrees_Empty(t *testing.T) {
 	wts := parseWorktrees("")
 

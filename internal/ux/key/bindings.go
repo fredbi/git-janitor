@@ -65,7 +65,9 @@ const (
 	K     Binding = "k"
 	O     Binding = "o"
 	S     Binding = "s"
+	U     Binding = "u"
 	X     Binding = "x"
+	M     Binding = "m"
 )
 
 // Quit reports whether this binding is a quit action.

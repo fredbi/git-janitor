@@ -20,6 +20,16 @@ type DetailPopup struct {
 	Content  string                  // raw content for clipboard copy
 	Scope    models.ActionSuggestion // subject scope for actions (delete, etc.)
 	IsRemote bool                    // true when showing a remote branch
+
+	// WorktreeLocked / WorktreePrunable / WorktreeMain capture the
+	// boolean state of a worktree at the moment the popup was opened.
+	// Used to gate the R / D / U / L key hints. The main worktree
+	// cannot be removed, repaired, locked or unlocked via git —
+	// those actions are hidden.
+	WorktreeLocked   bool
+	WorktreePrunable bool
+	WorktreeMain     bool
+
 	// URL, when non-empty, enables the "open in browser" action. The model
 	// wires the O key to dispatch open-in-browser with this URL.
 	URL string
@@ -48,6 +58,9 @@ func (d *DetailPopup) Show(title, content string, scope models.ActionSuggestion)
 	d.Scope = scope
 	d.URL = ""
 	d.Footer = ""
+	d.WorktreeLocked = false
+	d.WorktreePrunable = false
+	d.WorktreeMain = false
 	d.applyContent()
 	d.Visible = true
 	d.Viewport.GotoTop()
@@ -90,14 +103,41 @@ func (d *DetailPopup) Hide() {
 }
 
 // CanDelete reports whether the current scope supports a delete action.
+// A locked or main worktree cannot be removed via git.
 func (d *DetailPopup) CanDelete() bool {
-	return d.Scope.SubjectKind == models.SubjectBranch || d.Scope.SubjectKind == models.SubjectStash
+	switch d.Scope.SubjectKind {
+	case models.SubjectBranch, models.SubjectStash:
+		return true
+	case models.SubjectWorktree:
+		return !d.WorktreeLocked && !d.WorktreeMain
+	default:
+		return false
+	}
 }
 
 // CanRebase reports whether the current scope supports a rebase action.
 // Only local branches can be rebased (remote branches cannot).
 func (d *DetailPopup) CanRebase() bool {
 	return d.Scope.SubjectKind == models.SubjectBranch && !d.IsRemote
+}
+
+// CanRepair reports whether the current scope supports a repair action.
+// Meaningful only on a linked worktree whose working directory has
+// gone missing (Prunable=true).
+func (d *DetailPopup) CanRepair() bool {
+	return d.Scope.SubjectKind == models.SubjectWorktree && d.WorktreePrunable && !d.WorktreeMain
+}
+
+// CanUnlock reports whether the current scope supports an unlock
+// action — a locked linked worktree.
+func (d *DetailPopup) CanUnlock() bool {
+	return d.Scope.SubjectKind == models.SubjectWorktree && d.WorktreeLocked && !d.WorktreeMain
+}
+
+// CanLock reports whether the current scope supports a lock action —
+// an unlocked linked (non-main) worktree.
+func (d *DetailPopup) CanLock() bool {
+	return d.Scope.SubjectKind == models.SubjectWorktree && !d.WorktreeLocked && !d.WorktreeMain
 }
 
 // SetSize recalculates the popup dimensions (centered, ~60% of terminal).
@@ -152,9 +192,18 @@ func (d *DetailPopup) View(termWidth, termHeight int) string {
 		Foreground(t.Dim).
 		PaddingTop(1)
 
-	hint := "Esc: close  C: copy to clipboard"
+	hint := "Esc: close  C: copy to clipboard  Ctrl+K: quick actions"
 	if d.CanRebase() {
 		hint += "  R: rebase"
+	}
+	if d.CanRepair() {
+		hint += "  R: repair"
+	}
+	if d.CanUnlock() {
+		hint += "  U: unlock"
+	}
+	if d.CanLock() {
+		hint += "  L: lock"
 	}
 	if d.CanDelete() {
 		hint += "  D: delete"

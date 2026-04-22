@@ -19,6 +19,7 @@ import (
 	facts "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-facts"
 	recent "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-recent"
 	stashes "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-stashes"
+	worktrees "github.com/fredbi/git-janitor/internal/ux/panels/infos/tab-worktrees"
 	uxtypes "github.com/fredbi/git-janitor/internal/ux/types"
 )
 
@@ -28,31 +29,33 @@ const recentHistoryWindow = 30 * 24 * time.Hour // 30 days
 type RightTab int
 
 const (
-	TabFacts    RightTab = iota // facts tab (repo properties)
-	TabBranches                 // branches tab
-	TabAlerts                   // alerts tab
-	TabActions                  // actions tab
-	TabActivity                 // activity tab (issues, PRs, workflow runs)
-	TabStashes                  // stashes tab
-	TabRecent                   // recent activity tab
+	TabFacts     RightTab = iota // facts tab (repo properties)
+	TabBranches                  // branches tab
+	TabAlerts                    // alerts tab
+	TabActions                   // actions tab
+	TabActivity                  // activity tab (issues, PRs, workflow runs)
+	TabStashes                   // stashes tab
+	TabWorktrees                 // worktrees tab
+	TabRecent                    // recent activity tab
 )
 
 // RightTabCount is the number of tabs in the right panel.
-const RightTabCount = 7
+const RightTabCount = 8
 
 // Panel is a tab container for the right Pane.
 type Panel struct {
-	Theme    *uxtypes.Theme
-	Facts    facts.Panel
-	Branches branches.Panel
-	Stashes  stashes.Panel
-	Alerts   alerts.Panel
-	Actions  actions.Panel
-	Activity activity.Panel
-	Recent   recent.Panel
-	Active   RightTab
-	Width    int
-	Height   int
+	Theme     *uxtypes.Theme
+	Facts     facts.Panel
+	Branches  branches.Panel
+	Stashes   stashes.Panel
+	Worktrees worktrees.Panel
+	Alerts    alerts.Panel
+	Actions   actions.Panel
+	Activity  activity.Panel
+	Recent    recent.Panel
+	Active    RightTab
+	Width     int
+	Height    int
 
 	// Engine evaluates checks and produces alerts.
 	Engine ifaces.Engineer
@@ -67,16 +70,17 @@ type Panel struct {
 // New creates a new Panel with default tab sub-panels.
 func New(eng ifaces.Engineer, theme *uxtypes.Theme) Panel {
 	return Panel{
-		Theme:    theme,
-		Facts:    facts.New(theme),
-		Branches: branches.New(theme),
-		Stashes:  stashes.New(theme),
-		Alerts:   alerts.New(theme),
-		Actions:  actions.New(eng, theme),
-		Activity: activity.New(theme),
-		Recent:   recent.New(theme),
-		Active:   TabFacts,
-		Engine:   eng,
+		Theme:     theme,
+		Facts:     facts.New(theme),
+		Branches:  branches.New(theme),
+		Stashes:   stashes.New(theme),
+		Worktrees: worktrees.New(theme),
+		Alerts:    alerts.New(theme),
+		Actions:   actions.New(eng, theme),
+		Activity:  activity.New(theme),
+		Recent:    recent.New(theme),
+		Active:    TabFacts,
+		Engine:    eng,
 	}
 }
 
@@ -86,6 +90,7 @@ func (p *Panel) SetTheme(theme *uxtypes.Theme) {
 	p.Facts.Theme = theme
 	p.Branches.Theme = theme
 	p.Stashes.Theme = theme
+	p.Worktrees.Theme = theme
 	p.Alerts.Theme = theme
 	p.Actions.Theme = theme
 	p.Activity.Theme = theme
@@ -103,10 +108,26 @@ func (p *Panel) SetActivityData(info *models.RepoInfo) {
 	p.Activity.SetData(info)
 }
 
+// ShowInlineSuggestions loads a synthesized alert directly into the
+// Actions tab and switches focus to it. Used by UX paths that dispatch
+// an action requiring ParamPrompt from outside the Alerts → Actions
+// flow (e.g. Repair worktree from the detail popup).
+func (p *Panel) ShowInlineSuggestions(repoPath string, alert models.Alert) {
+	p.Actions.SetAlert(repoPath, &alert)
+	p.Active = TabActions
+}
+
 // SelectedBranch returns the branch currently highlighted in the Branches
 // tab. Returns false when the Branches tab is empty or no branch is selected.
 func (p *Panel) SelectedBranch() (models.Branch, bool) {
 	return p.Branches.SelectedBranch()
+}
+
+// SelectedWorktree returns the worktree currently highlighted in the
+// Worktrees tab. Returns false when the tab is empty or the cursor is
+// out of range.
+func (p *Panel) SelectedWorktree() (models.Worktree, bool) {
+	return p.Worktrees.SelectedWorktree()
 }
 
 // BranchesCursorScreenRow returns the cursor row within the Branches panel's
@@ -145,6 +166,7 @@ var RightTabDefs = []struct { //nolint:gochecknoglobals // tab definition table
 	{"Actions", TabActions},
 	{"Activity", TabActivity},
 	{"Stashes", TabStashes},
+	{"Worktrees", TabWorktrees},
 	{"Recent", TabRecent},
 }
 
@@ -160,6 +182,7 @@ func (p *Panel) SetRepoInfo(info *models.RepoInfo) {
 	p.Facts.SetInfo(info)
 	p.Branches.SetInfo(info)
 	p.Stashes.SetInfo(info)
+	p.Worktrees.SetInfo(info)
 	p.Activity.Reset()
 	p.Actions.Clear()
 	p.LastAlerts = nil // clear previous alerts before re-evaluation
@@ -257,6 +280,7 @@ func (p *Panel) SetSize(w, h int) {
 	p.Facts.SetSize(contentW, contentH)
 	p.Branches.SetSize(contentW, contentH)
 	p.Stashes.SetSize(contentW, contentH)
+	p.Worktrees.SetSize(contentW, contentH)
 	p.Alerts.SetSize(contentW, contentH)
 	p.Actions.SetSize(contentW, contentH)
 	p.Activity.SetSize(contentW, contentH)
@@ -283,6 +307,8 @@ func (p *Panel) Update(msg tea.Msg) tea.Cmd {
 		return p.Branches.Update(msg)
 	case TabStashes:
 		return p.Stashes.Update(msg)
+	case TabWorktrees:
+		return p.Worktrees.Update(msg)
 	case TabAlerts:
 		return p.Alerts.Update(msg)
 	case TabActions:
@@ -348,6 +374,8 @@ func (p *Panel) View(focused bool) string {
 		content = p.Branches.View()
 	case TabStashes:
 		content = p.Stashes.View()
+	case TabWorktrees:
+		content = p.Worktrees.View()
 	case TabAlerts:
 		content = p.Alerts.View()
 	case TabActions:

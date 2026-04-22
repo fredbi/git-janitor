@@ -50,6 +50,10 @@ defaults:
       - name: traits-submodules
       - name: traits-lfs
       - name: stale-submodule-dirs
+      - name: git-worktree-prunable
+      - name: git-worktree-stale-locked
+      - name: git-worktree-dirty
+      - name: git-worktree-dirty-inactive
       # GitHub (API-based, require GITHUB_TOKEN or GH_TOKEN)
       - name: github-repo-archived
       - name: github-default-branch-mismatch
@@ -85,6 +89,23 @@ defaults:
       - name: run-gc-deep-clean
         auto: false
       - name: clean-stale-submodule-dirs
+        auto: false
+      # Worktrees
+      - name: delete-worktree
+        auto: false
+      - name: repair-worktree
+        auto: false
+      - name: prune-worktrees
+        auto: false
+      - name: unlock-worktree
+        auto: false
+      - name: lock-worktree
+        auto: false
+      - name: add-worktree
+        auto: false
+      - name: move-worktree
+        auto: false
+      - name: stash-worktree-dirty
         auto: false
       # Tags
       - name: push-tag
@@ -159,6 +180,17 @@ quick-actions:
     description: Open branch in a new worktree
     pre-commands:
       - 'git worktree add "{{worktree}}" "{{branch}}" 2>/dev/null || true'
+    init-commands:
+      - git status
+    command:
+      - gnome-terminal
+      - '--'
+      - bash
+      - '--init-file'
+      - '{{init-file}}'
+  - subject: worktree
+    name: open-worktree-in-terminal
+    description: Open worktree in a terminal
     init-commands:
       - git status
     command:

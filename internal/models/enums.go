@@ -41,17 +41,18 @@ const (
 type SubjectKind uint8
 
 const (
-	SubjectNone   SubjectKind = iota // no specific subject (repo-level)
-	SubjectRepo                      // the repository itself
-	SubjectRemote                    // a git remote
-	SubjectBranch                    // a git branch
-	SubjectStash                     // a git stash entry
-	SubjectTag                       // a git tag
-	SubjectFile                      // a git file object
-	SubjectIssues                    // GitHub issues (paginated list)
-	SubjectPullRequests              // GitHub pull requests (paginated list)
-	SubjectWorkflowRuns              // GitHub workflow runs (paginated list)
-	SubjectIssueDetail               // a single GitHub issue, identified by number
+	SubjectNone         SubjectKind = iota // no specific subject (repo-level)
+	SubjectRepo                            // the repository itself
+	SubjectRemote                          // a git remote
+	SubjectBranch                          // a git branch
+	SubjectStash                           // a git stash entry
+	SubjectTag                             // a git tag
+	SubjectFile                            // a git file object
+	SubjectWorktree                        // a git worktree (main or linked)
+	SubjectIssues                          // GitHub issues (paginated list)
+	SubjectPullRequests                    // GitHub pull requests (paginated list)
+	SubjectWorkflowRuns                    // GitHub workflow runs (paginated list)
+	SubjectIssueDetail                     // a single GitHub issue, identified by number
 )
 
 // String returns the human-readable name of a SubjectKind.
@@ -69,6 +70,8 @@ func (s SubjectKind) String() string {
 		return "stash"
 	case SubjectTag:
 		return "tag"
+	case SubjectWorktree:
+		return "worktree"
 	case SubjectIssues:
 		return "issues"
 	case SubjectPullRequests:
@@ -100,6 +103,8 @@ func ParseSubjectKind(s string) (SubjectKind, bool) {
 		return SubjectTag, true
 	case "file":
 		return SubjectFile, true
+	case "worktree":
+		return SubjectWorktree, true
 	case "issues":
 		return SubjectIssues, true
 	case "pull_requests", "pull-requests", "pullrequests":

@@ -153,3 +153,12 @@ type ClearCacheMsg struct{}
 type PurgeHistoryMsg struct {
 	OlderThanDays int
 }
+
+// PromptAddWorktreeMsg asks the Model to open a status-bar prompt for
+// the new worktree path (A key in the Worktrees tab).
+type PromptAddWorktreeMsg struct{}
+
+// PromptMoveWorktreeMsg asks the Model to open a status-bar prompt for
+// the new path of the currently selected worktree (M key in the
+// Worktrees tab).
+type PromptMoveWorktreeMsg struct{}
